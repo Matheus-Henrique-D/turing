@@ -1,48 +1,112 @@
-# 🤖 Human or Not? — Minijogo do Teste de Turing 👤
+# 🤖 Human or Not? — Plataforma Teste de Turing 👤
 
-Minijogo interativo inspirado no clássico **[humanornot.so](https://humanornot.so)** e no material didático do **Teste de Turing**.
-
----
-
-## 🎯 Como Funciona a Mecânica
-1. **Chat de 5 Turnos**: Você conversa com um interlocutor misterioso por até 5 mensagens.
-2. **Identidade Sorteada**: O interlocutor tem 50% de chance de ser uma **Inteligência Artificial** ou um **Humano**.
-   - *Se for Humano*: Exibe gírias comuns da internet brasileira (`kkk`, `mano`, `slk`), pontuação casual, possíveis errinhos de digitação e respostas espontâneas.
-   - *Se for IA*: Exibe padrões de linguagem mais polidos, respostas diretas ou estruturadas.
-3. **Votação**: Após a 5ª mensagem, a caixa de texto é bloqueada e surgem os botões de votação:
-   - `🤖 Inteligência Artificial`
-   - `👤 Humano`
-4. **Revelação e Placar**: O jogo revela quem era o interlocutor de verdade e registra seu histórico de acertos e taxa de sucesso.
+Plataforma interativa inspirada no **[humanornot.so](https://humanornot.so)** e no material didático do **Teste de Turing**, desenvolvida com arquitetura limpa em camadas (*Clean Architecture*), controle de acesso baseado em papéis (**RBAC**), persistência relacional em **SQLite**, suporte a **Handoff Humano** e **Mocks de IA**.
 
 ---
 
-## 🚀 Como Executar
+## 🚀 Funcionalidades Implementadas (Roadmap Fases 1 a 7)
 
-Você tem duas formas de jogar:
-
-### Opção 1: Interface Web Moderna (Streamlit) — Recomendada 🌟
-1. Instale as dependências:
-   ```bash
-   pip install -r requirements.txt
-   ```
-2. Inicie a aplicação web:
-   ```bash
-   streamlit run app.py
-   ```
-3. O navegador abrirá automaticamente no endereço `http://localhost:8501`.
+- **Fase 1: Autenticação & Perfis (RBAC)**
+  - Cadastro de usuários com validação e hash seguro (`PBKDF2-HMAC-SHA256` com salt individual).
+  - Perfis de acesso distintos: `usuario` (jogador), `operador` (atendimento humano) e `admin` (gestão e governança).
+- **Fase 2: Chat Estruturado & Persistência Relacional**
+  - Banco de dados SQLite (`data/turing_platform.db`) com histórico completo de mensagens, sessões e logs.
+  - Regra de negócio de 5 turnos com controle estrito e contador em tempo real.
+- **Fase 3: IA Local (Mocks & Stubs Desacoplados)**
+  - Operação 100% offline e sem consumo de APIs externas via `MockTuringProvider` enriquecido com personas comportamentais (`gamer_jovem`, `ironico_zoeiro`, `estudante_neutro`, `assistente_formal`, `ia_tentando_disfarcar`, `filosofica_precisa`).
+  - `OllamaProviderStub` preparado para conexão futura com IA local gratuita via Ollama.
+- **Fase 4: Handoff para Operador Humano**
+  - Botão *"Falar com Humano"* durante o chat: transfere a sessão para a fila de atendimento humano.
+- **Fase 5: Painel do Operador**
+  - Fila de atendimento ao vivo, visualização do histórico e resposta direta do operador para o jogador.
+- **Fase 6: Painel do Administrador**
+  - Gestão de usuários (ativação, bloqueio e promoção de perfis RBAC), métricas consolidadas e trilha de auditoria.
+- **Fase 7: Segurança e Testes Automatizados**
+  - Sanitização de entradas, proteção contra timing-attacks e suíte de testes unitários com 100% de aprovação.
 
 ---
 
-### Opção 2: Versão Linha de Comando / Terminal (Sem dependências extras) 💻
-Você pode rodar diretamente com o Python padrão:
+## 🔐 Contas Padrão de Demonstração
+
+Ao inicializar o sistema pela primeira vez, as seguintes contas pré-configuradas ficam disponíveis para teste imediato:
+
+| Perfil | Usuário (Login) | Senha | Acesso / Permissões |
+|---|---|---|---|
+| **Administrador** | `admin` | `admin123` | Painel de controle, gestão de usuários, RBAC, métricas e auditoria |
+| **Operador** | `operador` | `operador123` | Painel de atendimento ao vivo, fila de handoff e respostas diretas |
+| **Jogador** | `jogador1` | `jogador123` | Jogo Teste de Turing, chat de 5 turnos, votação e solicitação de humano |
+
+*Você também pode criar novos usuários a qualquer momento pela aba "Criar Conta".*
+
+---
+
+## 🛠️ Como Executar a Aplicação
+
+### 1. Interface Web Completa (Streamlit) — Recomendada 🌟
+```bash
+# 1. Instalar dependências
+pip install -r requirements.txt
+
+# 2. Executar a aplicação web
+streamlit run app.py
+```
+Acesse no seu navegador: `http://localhost:8501`.
+
+### 2. Interface Terminal (CLI) 💻
 ```bash
 python cli_game.py
+```
+*Oferece efeito typewriter letra a letra e opção de salvar histórico no banco de dados SQLite.*
+
+### 3. Executar a Suíte de Testes Automatizados 🧪
+```bash
+python -m unittest discover -s tests
 ```
 
 ---
 
-## 📁 Estrutura dos Arquivos
-- [`app.py`](file:///c:/Users/joker/OneDrive/Documentos/Turing/app.py): Interface Web estilizada no Streamlit com histórico de chat, indicador de digitação e tela de votação.
-- [`cli_game.py`](file:///c:/Users/joker/OneDrive/Documentos/Turing/cli_game.py): Versão para jogar direto no terminal.
-- [`bot_engine.py`](file:///c:/Users/joker/OneDrive/Documentos/Turing/bot_engine.py): Motor lógico de geração de respostas e simulação de comportamentos/personas.
-- [`requirements.txt`](file:///c:/Users/joker/OneDrive/Documentos/Turing/requirements.txt): Dependências do projeto.
+## 📁 Estrutura do Projeto
+
+```
+Turing/
+│
+├── core/                       # Núcleo do sistema
+│   ├── config.py               # Configurações globais e constantes do jogo
+│   ├── security.py             # Hash criptográfico PBKDF2, salts e validação de senhas
+│   └── database.py             # Conexão SQLite, criação de tabelas e seeds automáticos
+│
+├── models/                     # Entidades e Repositórios de Dados
+│   ├── user.py                 # Entidade e CRUD de Usuários
+│   ├── session.py              # Entidade e CRUD de Sessões de Jogo e Estatísticas
+│   └── message.py              # Entidade e Persistência de Mensagens
+│
+├── services/                   # Camada de Serviços de Negócio
+│   ├── auth_service.py         # Login, Registro e Verificação RBAC
+│   ├── game_service.py         # Mecânica do Teste de Turing (5 turnos e votação)
+│   ├── handoff_service.py      # Fila de espera e atendimento por operadores
+│   ├── admin_service.py        # Gestão administrativa, métricas e auditoria
+│   └── ai_provider.py          # Provedor de IA: Mock offline e Stub para Ollama
+│
+├── tests/                      # Suíte de Testes Unitários Automatizados
+│   ├── test_security.py        # Testes de criptografia e regras de senha
+│   ├── test_auth.py            # Testes de login, registro e RBAC
+│   ├── test_game.py            # Testes do ciclo de 5 turnos e votação
+│   ├── test_handoff.py         # Testes de solicitação e atendimento humano
+│   └── test_ai_provider.py     # Testes do Mock isolado sem chamadas de rede
+│
+├── GUIA_INTEGRACAO_EXTERNA.md  # Guia passo a passo para conectar Ollama / APIs reais
+├── PRD_Human_or_Not.md         # Documento de Requisitos de Produto (PRD)
+├── ROADMAP.md                  # Roadmap arquitetural das fases 1 a 7
+├── app.py                      # Aplicação Web Streamlit multi-perfil
+├── cli_game.py                 # Aplicação interativa para terminal
+├── bot_engine.py               # Motor mantido para compatibilidade retroativa
+└── requirements.txt            # Dependências Python
+```
+
+---
+
+## 📖 Guia para Conectar IA Real (Ollama)
+
+Conforme a regra estrita do projeto, a aplicação não efetua requisições para serviços externos de terceiros por padrão. Para aprender a conectar um modelo local (como Llama 3, Mistral, Gemma ou Phi) via Ollama, consulte o documento:
+
+👉 **[GUIA_INTEGRACAO_EXTERNA.md](GUIA_INTEGRACAO_EXTERNA.md)**

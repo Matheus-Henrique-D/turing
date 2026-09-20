@@ -16,6 +16,14 @@ ENV/
 !.env.example
 .streamlit/secrets.toml
 
+# Local application data
+data/*.db
+
+# Downloaded model weights (retrieve with Bert/baixar.py)
+Bert/Arquivos modelo nlp/*.bin
+Bert/Arquivos modelo nlp/*.h5
+Bert/Arquivos modelo nlp/*.msgpack
+
 # Tests and tooling
 .pytest_cache/
 .coverage
