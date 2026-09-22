@@ -52,6 +52,17 @@ streamlit run app.py
 ```
 Acesse no seu navegador: `http://localhost:8501`.
 
+### Selecionar o provider de IA
+
+O padrão continua sendo o Ollama. Para testar o BERTimbau como provider opcional:
+
+```powershell
+$env:TURING_AI_PROVIDER = "bertimbau"
+streamlit run app.py
+```
+
+O BERTimbau é um modelo de preenchimento de máscara, então ele gera respostas curtas assistidas por contexto e não substitui um modelo conversacional. O provider carrega os pesos sob demanda e usa o mock offline automaticamente quando `torch`, os pesos locais ou o download do modelo não estão disponíveis. Para voltar ao Ollama, remova a variável ou use `$env:TURING_AI_PROVIDER = "ollama"`.
+
 ### 2. Interface Terminal (CLI) 💻
 ```bash
 python cli_game.py

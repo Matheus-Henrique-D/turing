@@ -5,6 +5,7 @@ Garante que o interlocutor aja como uma pessoa real ou uma IA carismática, nunc
 """
 
 from abc import ABC, abstractmethod
+import os
 import random
 import re
 from datetime import datetime
@@ -208,6 +209,48 @@ class MockTuringProvider(AIProviderInterface):
         return text
 
 
+class BertimbauProvider(AIProviderInterface):
+    """Provider opcional baseado no BERTimbau, com fallback totalmente offline."""
+
+    def __init__(self):
+        self.mock_fallback = MockTuringProvider()
+        self._fill_mask = None
+
+    def generate_response(
+        self,
+        user_message: str,
+        chat_history: list[dict],
+        opponent_type: str,
+        persona: str
+    ) -> str:
+        try:
+            if self._fill_mask is None:
+                from Bert.transformer import load_fill_mask_pipeline
+                self._fill_mask = load_fill_mask_pipeline()
+
+            prompt = self._build_prompt(user_message)
+            prediction = self._fill_mask(prompt, top_k=1)[0]
+            token = prediction.get("token_str", "").strip()
+            if token:
+                return self._format_prediction(token, opponent_type)
+        except Exception:
+            pass
+
+        return self.mock_fallback.generate_response(
+            user_message, chat_history, opponent_type, persona
+        )
+
+    @staticmethod
+    def _build_prompt(user_message: str) -> str:
+        return f"A palavra que melhor resume esta mensagem é {user_message}: [MASK]."
+
+    @staticmethod
+    def _format_prediction(token: str, opponent_type: str) -> str:
+        if opponent_type == "HUMAN":
+            return f"hmm, eu diria que isso tem a ver com {token.lower()} kkk"
+        return f"Interessante. Eu resumiria essa ideia como {token.lower()}."
+
+
 class OllamaProvider(AIProviderInterface):
     """
     PROVEDOR DE AGENTE IA LOCAL VIA OLLAMA (100% Gratuito e com Personalidade Autêntica).
@@ -301,5 +344,10 @@ class OllamaProvider(AIProviderInterface):
 OllamaProviderStub = OllamaProvider
 
 def get_ai_provider() -> AIProviderInterface:
-    """Retorna o provedor de IA com agente de personalidade ativa (Llama 3.2 3B/1B)."""
-    return OllamaProvider(model_name="llama3.2:3b")
+    """Retorna o provider configurado, mantendo Ollama como padrão."""
+    provider_name = os.getenv("TURING_AI_PROVIDER", "ollama").lower()
+    if provider_name in {"bert", "bertimbau"}:
+        return BertimbauProvider()
+    if provider_name == "mock":
+        return MockTuringProvider()
+    return OllamaProvider(model_name=os.getenv("TURING_OLLAMA_MODEL", "llama3.2:3b"))

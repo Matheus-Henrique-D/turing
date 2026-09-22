@@ -1,26 +1,37 @@
 from pathlib import Path
-
-import torch
-from transformers import AutoModelForMaskedLM, AutoTokenizer, pipeline
+from typing import Any
 
 
 MODEL_ID = "neuralmind/bert-base-portuguese-cased"
 LOCAL_MODEL_DIR = Path(__file__).resolve().parent / "Arquivos modelo nlp"
 
 
-def load_fill_mask_pipeline():
-    """Carrega o BERTimbau localmente quando os artefatos estiverem disponíveis."""
-    model_source = str(LOCAL_MODEL_DIR) if LOCAL_MODEL_DIR.exists() else MODEL_ID
+def has_local_weights() -> bool:
+    """Indica se o diretório local tem pesos, e não apenas o tokenizer."""
+    return any((LOCAL_MODEL_DIR / filename).exists() for filename in (
+        "pytorch_model.bin",
+        "model.safetensors",
+        "tf_model.h5",
+    ))
+
+
+def load_fill_mask_pipeline() -> Any:
+    """Carrega o BERTimbau sob demanda, usando pesos locais quando existirem."""
+    import torch
+    from transformers import AutoModelForMaskedLM, AutoTokenizer, pipeline
+
+    model_source = str(LOCAL_MODEL_DIR) if has_local_weights() else MODEL_ID
     tokenizer = AutoTokenizer.from_pretrained(model_source, do_lower_case=False)
     model = AutoModelForMaskedLM.from_pretrained(model_source)
     device = 0 if torch.cuda.is_available() else -1
 
-    return pipeline(
-        task="fill-mask",
-        model=model,
-        tokenizer=tokenizer,
-        device=device,
-    )
+    return pipeline("fill-mask", model=model, tokenizer=tokenizer, device=device)
+
+
+def predict_masked_tokens(text: str, top_k: int = 3) -> list[dict[str, Any]]:
+    """Retorna previsões do BERTimbau sem manter o modelo carregado na importação."""
+    fill_mask = load_fill_mask_pipeline()
+    return fill_mask(text, top_k=top_k)
 
 
 def main():

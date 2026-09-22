@@ -5,6 +5,7 @@ Suporta perfis de Jogador (usuario), Operador de Atendimento e Administrador.
 """
 
 import streamlit as st
+import os
 import time
 import random
 from datetime import datetime
@@ -41,14 +42,115 @@ st.set_page_config(
 # Estilização visual moderna
 st.markdown("""
 <style>
+    :root {
+        --ink: #172033;
+        --muted: #667085;
+        --line: #e6e9ef;
+        --surface: #ffffff;
+        --canvas: #f7f8fa;
+        --accent: #315efb;
+        --accent-soft: #edf2ff;
+    }
+    .stApp {
+        background: var(--canvas);
+        color: var(--ink);
+    }
+    body,
+    [data-testid="stAppViewContainer"],
+    [data-testid="stHeader"] {
+        background: var(--canvas);
+    }
+    [data-testid="stMarkdownContainer"],
+    [data-testid="stMarkdownContainer"] p,
+    [data-testid="stMarkdownContainer"] span,
+    [data-testid="stMarkdownContainer"] li,
+    [data-testid="stMarkdownContainer"] strong,
+    h1, h2, h3, h4, h5, h6,
+    .stText,
+    label,
+    [data-testid="stMetricLabel"],
+    [data-testid="stMetricValue"],
+    [data-testid="stMetricDelta"] {
+        color: var(--ink) !important;
+    }
+    [data-baseweb="tab-list"] button,
+    [data-baseweb="tab-list"] button p,
+    [data-baseweb="select"] * {
+        color: var(--ink) !important;
+    }
+    [data-testid="stSidebar"] {
+        background: var(--surface);
+        border-right: 1px solid var(--line);
+    }
+    [data-testid="stSidebar"] [data-testid="stMarkdownContainer"],
+    [data-testid="stSidebar"] label,
+    [data-testid="stSidebar"] p,
+    [data-testid="stSidebar"] span {
+        color: var(--ink) !important;
+    }
+    [data-testid="stSidebar"] hr,
+    hr {
+        border-color: var(--line);
+    }
+    .block-container {
+        max-width: 1180px;
+        padding-top: 2.4rem;
+        padding-bottom: 3rem;
+    }
     .main-header {
-        font-size: 2rem;
+        color: var(--ink);
+        font-size: 1.85rem;
         font-weight: 800;
-        margin-bottom: 0.2rem;
+        letter-spacing: -0.02em;
+        margin-bottom: 0.35rem;
+    }
+    .stCaption, [data-testid="stCaptionContainer"] { color: var(--muted); }
+    .stButton > button,
+    .stDownloadButton > button {
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        min-height: 2.5rem;
+        font-weight: 600;
+        transition: border-color 120ms ease, background-color 120ms ease;
+    }
+    .stButton > button:hover,
+    .stDownloadButton > button:hover {
+        border-color: var(--accent);
+        color: var(--accent);
+    }
+    .stButton > button[kind="primary"] {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: #ffffff !important;
+    }
+    .stButton > button[kind="secondary"],
+    .stButton > button:not([kind="primary"]),
+    .stDownloadButton > button {
+        background: var(--surface);
+        color: var(--ink) !important;
+    }
+    input, textarea,
+    [data-baseweb="select"] > div,
+    [data-baseweb="input"] > div {
+        background: var(--surface) !important;
+        color: var(--ink) !important;
+        border-color: var(--line) !important;
+    }
+    input::placeholder, textarea::placeholder {
+        color: var(--muted) !important;
+    }
+    [data-testid="stChatMessage"] {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: var(--surface);
+        margin-bottom: 0.65rem;
+    }
+    [data-testid="stChatInput"] {
+        border-color: var(--line);
     }
     .badge-role {
-        padding: 4px 10px;
-        border-radius: 12px;
+        padding: 3px 8px;
+        border-radius: 6px;
         font-size: 0.8rem;
         font-weight: bold;
         text-transform: uppercase;
@@ -58,33 +160,45 @@ st.markdown("""
     .badge-usuario { background-color: #059669; color: white; }
     
     .card-session {
-        background-color: #1e293b;
-        border: 1px solid #334155;
-        border-radius: 8px;
+        background-color: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 7px;
         padding: 12px;
         margin-bottom: 10px;
     }
     .vote-panel {
-        background-color: #1e1e2f;
-        border-radius: 12px;
-        padding: 24px;
-        text-align: center;
+        background-color: var(--accent-soft);
+        border: 1px solid #dbe4ff;
+        border-radius: 9px;
+        color: var(--ink);
+        padding: 20px;
         margin-top: 15px;
-        border: 1px solid #3d3d5c;
+    }
+    [data-testid="stAlert"] {
+        color: var(--ink) !important;
+    }
+    [data-testid="stAlert"] p,
+    [data-testid="stAlert"] span {
+        color: inherit !important;
     }
     .result-win {
-        background: linear-gradient(135deg, #1e40af, #047857);
+        background: #e9f8f0;
+        border: 1px solid #bce7ce;
         color: white;
         padding: 20px;
-        border-radius: 10px;
+        border-radius: 9px;
         text-align: center;
     }
     .result-loss {
-        background: linear-gradient(135deg, #991b1b, #d97706);
+        background: #fff2f0;
+        border: 1px solid #f3c8c2;
         color: white;
         padding: 20px;
-        border-radius: 10px;
+        border-radius: 9px;
         text-align: center;
+    }
+    .result-win h2, .result-win p, .result-loss h2, .result-loss p {
+        color: var(--ink);
     }
 </style>
 """, unsafe_allow_html=True)
@@ -183,8 +297,15 @@ with st.sidebar:
     selected_view = st.radio("Selecione a visualização:", allowed_views)
 
     st.markdown("---")
-    st.caption("🧠 **Status da Inteligência Artificial:**")
-    st.success("🟢 **Ollama Local Ativo**\nModelo: `llama3.2:1b` (100% Gratuito)")
+    st.caption("🧠 **Provedor de Inteligência Artificial**")
+    provider_name = os.getenv("TURING_AI_PROVIDER", "ollama").lower()
+    provider_label = {
+        "ollama": "Ollama Local",
+        "bert": "BERTimbau",
+        "bertimbau": "BERTimbau",
+        "mock": "Modo offline",
+    }.get(provider_name, provider_name.title())
+    st.info(f"**{provider_label}**\n\nConfigurado localmente")
 
 # ==============================================================================
 # VISÃO 1: JOGADOR (TESTE DE TURING & CHAT DE 5 TURNOS)
