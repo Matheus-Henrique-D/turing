@@ -23,9 +23,12 @@ class TuringOpponent:
         
         # Seleção de persona com impacto comportamental real
         if self.opponent_type == "HUMAN":
-            self.persona = random.choice(["gamer_jovem", "estudante_neutro", "ironico_zoeiro"])
+            self.persona = random.choice(["gamer_jovem", "estudante_neutro", "ironico_zoeiro", "casual_gente_boa"])
         else:
-            self.persona = random.choice(["assistente_formal", "ia_tentando_disfarcar", "filosofica_precisa"])
+            self.persona = random.choice([
+                "assistente_formal", "ia_tentando_disfarcar", "filosofica_precisa",
+                "ia_camuflada", "ia_filosofica_sutil", "ia_ironica"
+            ])
 
         # Provedor base (Mock local seguro)
         self.provider: AIProviderInterface = MockTuringProvider()

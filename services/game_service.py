@@ -18,7 +18,14 @@ from models.message import Message, MessageRepository
 from services.ai_provider import get_ai_provider
 
 HUMAN_PERSONAS = ["gamer_jovem", "estudante_neutro", "ironico_zoeiro", "casual_gente_boa"]
-AI_PERSONAS = ["ia_camuflada", "ia_filosofica_sutil", "ia_ironica", "ia_tentando_disfarcar"]
+AI_PERSONAS = [
+    "assistente_formal",
+    "ia_tentando_disfarcar",
+    "filosofica_precisa",
+    "ia_camuflada",
+    "ia_filosofica_sutil",
+    "ia_ironica"
+]
 
 class GameService:
     def __init__(self, ai_provider = None):
