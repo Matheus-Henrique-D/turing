@@ -55,6 +55,7 @@ def init_db():
             user_id INTEGER NOT NULL,
             opponent_type TEXT NOT NULL CHECK(opponent_type IN ('HUMAN', 'AI')),
             persona TEXT NOT NULL,
+            topic TEXT NULL,
             status TEXT NOT NULL CHECK(status IN ('active', 'waiting_operator', 'operator_active', 'voting', 'finished')),
             operator_id INTEGER NULL,
             user_guess TEXT NULL CHECK(user_guess IN ('HUMAN', 'AI', NULL)),
@@ -65,6 +66,12 @@ def init_db():
             FOREIGN KEY (operator_id) REFERENCES users (id)
         );
         """)
+        
+        # Migração segura para bancos existentes
+        try:
+            cursor.execute("ALTER TABLE game_sessions ADD COLUMN topic TEXT NULL;")
+        except sqlite3.OperationalError:
+            pass
         
         # Tabela de Mensagens
         cursor.execute("""

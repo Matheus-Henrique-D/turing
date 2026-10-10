@@ -697,6 +697,7 @@ class AIProviderInterface(ABC):
         chat_history: list[dict],
         opponent_type: str,
         persona: str,
+        topic: Optional[str] = None,
     ) -> str:
         pass
 
@@ -716,6 +717,7 @@ class MockTuringProvider(AIProviderInterface):
         chat_history: list[dict],
         opponent_type: str,
         persona: str,
+        topic: Optional[str] = None,
     ) -> str:
         # Fallback de persona segura se não informada
         if not persona:
@@ -1066,6 +1068,7 @@ class BertimbauProvider(AIProviderInterface):
         chat_history: list[dict],
         opponent_type: str,
         persona: str,
+        topic: Optional[str] = None,
     ) -> str:
         try:
             if self._fill_mask is None:
@@ -1081,7 +1084,7 @@ class BertimbauProvider(AIProviderInterface):
             pass
 
         return self.mock_fallback.generate_response(
-            user_message, chat_history, opponent_type, persona
+            user_message, chat_history, opponent_type, persona, topic=topic
         )
 
     @staticmethod
@@ -1097,6 +1100,130 @@ class BertimbauProvider(AIProviderInterface):
                 return f"ala o cara falando de {token.lower()} do nada kkk"
             return f"hmm, eu diria que isso tem a ver com {token.lower()} kkk"
         return f"Interessante. Eu resumiria essa ideia como {token.lower()}."
+
+
+# ---------------------------------------------------------------------------
+# LM STUDIO PROVIDER — OPENAI-COMPATIBLE LOCAL (HERMES-3, QWEN, GEMMA)
+# ---------------------------------------------------------------------------
+class LMStudioProvider(AIProviderInterface):
+    """
+    PROVEDOR PARA LM STUDIO (API OpenAI-Compatible em http://127.0.0.1:1234/v1).
+    Perfeito para modelos GGUF locais rápidos como Hermes-3-Llama-3.2-3B.
+    Suporta injeção de persona, tema da rodada e formatação natural de WhatsApp.
+    """
+
+    def __init__(
+        self,
+        endpoint: str = "http://127.0.0.1:1234/v1/chat/completions",
+        model_name: Optional[str] = "hermes-3-llama-3.2-3b",
+    ):
+        self.endpoint = endpoint
+        self.model_name = model_name
+        self.mock_fallback = MockTuringProvider()
+
+    def generate_response(
+        self,
+        user_message: str,
+        chat_history: list[dict],
+        opponent_type: str,
+        persona: str,
+        topic: Optional[str] = None,
+    ) -> str:
+        import requests  # noqa: PLC0415
+
+        persona_base = PERSONA_PROMPTS.get(
+            persona,
+            PERSONA_PROMPTS.get("gamer_jovem" if opponent_type == "HUMAN" else "ia_camuflada", ""),
+        )
+
+        topic_instruction = (
+            f"\n\nO TEMA CENTRAL DESTA RODADA É: '{topic}'. "
+            "Você e o outro jogador estão conversando sobre esse assunto. "
+            "Dê sua opinião humana, espontânea e autêntica sobre esse tema."
+            if topic else ""
+        )
+
+        ptbr_reinforcement = (
+            "\n\nDIRETRIZES FUNDAMENTAIS DO JOGO 'HUMAN OR NOT': "
+            "1. Responda SEMPRE em português brasileiro informal e natural. "
+            "2. MÁXIMO absoluto de 1 a 2 sentenças curtas (≤ 25 palavras no total). "
+            "3. PROIBIDO introduções de robô ou assistente como 'Claro!', 'Certamente!', 'Com prazer!', 'Olá! Como posso ajudar?'. "
+            "4. PROIBIDO usar listas, tópicos, markdown ou pontuação acadêmica. "
+            "5. Escreva de forma rápida e espontânea, exatamente como alguém digitando uma mensagem curta no WhatsApp. "
+            "6. Se o usuário perguntar se você é um robô ou IA, reaja com indignação natural, deboche ou negação espontânea. JAMAIS admita ser inteligência artificial ou software."
+        )
+
+        system_instruction = persona_base + topic_instruction + ptbr_reinforcement
+
+        messages = [{"role": "system", "content": system_instruction}]
+        for msg in chat_history[-6:]:
+            role = "assistant" if msg["role"] in ["ai", "simulated_human", "operator"] else "user"
+            messages.append({"role": role, "content": msg["content"]})
+
+        if not messages or messages[-1]["content"] != user_message:
+            messages.append({"role": "user", "content": user_message})
+
+        payload = {
+            "messages": messages,
+            "temperature": 0.88 if opponent_type == "HUMAN" else 0.75,
+            "max_tokens": 50,
+            "stream": False,
+        }
+        if self.model_name:
+            payload["model"] = self.model_name
+
+        try:
+            response = requests.post(self.endpoint, json=payload, timeout=12)
+            if response.status_code == 200:
+                data = response.json()
+                choices = data.get("choices", [])
+                if choices:
+                    raw_reply = choices[0].get("message", {}).get("content", "").strip()
+                    cleaned_reply = self._sanitize_agent_reply(raw_reply, opponent_type, persona)
+                    if cleaned_reply:
+                        return cleaned_reply
+        except Exception:
+            pass
+
+        return self.mock_fallback.generate_response(
+            user_message, chat_history, opponent_type, persona, topic=topic
+        )
+
+    def _sanitize_agent_reply(self, text: str, opponent_type: str, persona: str) -> str:
+        """Limpa clichês de IA, prefixos de roleplay e confissões de ser robô."""
+        if not text:
+            return ""
+
+        text = re.sub(
+            r'^(Lucas|Camila|Rodrigo|Gabriel|Arthur|IA|Assistente|Resposta|Bot|Interlocutor|Eu):\s*',
+            '', text, flags=re.IGNORECASE,
+        )
+
+        cliche_starts = [
+            r'^(Claro!?\s*)', r'^(Certamente!?\s*)', r'^(Com prazer!?\s*)',
+            r'^(Olá!?\s*)', r'^(Oi!?\s*Eu\s+sou\s+)',
+            r'^(Como\s+(posso|um|uma)\s+)',
+            r'^(Com\s+certeza!?\s*)',
+        ]
+        for pattern in cliche_starts:
+            text = re.sub(pattern, '', text, flags=re.IGNORECASE).strip()
+
+        confession_pattern = (
+            r'\b(sou|era|sou mesmo|seria|fui|como)\b'
+            r'.*?\b(bot|rob[oô]|robot|ia|m[aá]quina|c[oó]digo|'
+            r'software|algoritmo|linguagem|assistente|programa)\b'
+        )
+        if re.search(confession_pattern, text, flags=re.IGNORECASE) \
+                or "não tenho sentimentos" in text.lower() \
+                or "como modelo de linguagem" in text.lower() \
+                or "como uma inteligência" in text.lower() \
+                or "sou apenas um programa" in text.lower():
+            return self.mock_fallback._robot_denial(opponent_type, persona)
+
+        if persona in {"gamer_jovem", "ironico_zoeiro", "casual_gente_boa"} and random.random() < 0.4 and text:
+            text = text[0].lower() + text[1:]
+
+        return text.strip('"\'').strip()
 
 
 # ---------------------------------------------------------------------------
@@ -1125,13 +1252,20 @@ class OllamaProvider(AIProviderInterface):
         chat_history: list[dict],
         opponent_type: str,
         persona: str,
+        topic: Optional[str] = None,
     ) -> str:
         import requests  # noqa: PLC0415
 
-        # Instrução de sistema: persona + reforço rigoroso de humanidade PT-BR
+        # Instrução de sistema: persona + tema da rodada + reforço de humanidade PT-BR
         persona_base = PERSONA_PROMPTS.get(
             persona,
             PERSONA_PROMPTS.get("gamer_jovem" if opponent_type == "HUMAN" else "ia_camuflada", ""),
+        )
+        topic_instruction = (
+            f"\n\nO TEMA CENTRAL DESTA RODADA É: '{topic}'. "
+            "Você e o outro jogador estão conversando sobre esse assunto. "
+            "Dê sua opinião humana, espontânea e autêntica sobre esse tema."
+            if topic else ""
         )
         ptbr_reinforcement = (
             "\n\nDIRETRIZES FUNDAMENTAIS DO JOGO 'HUMAN OR NOT': "
@@ -1142,7 +1276,7 @@ class OllamaProvider(AIProviderInterface):
             "5. Escreva de forma rápida e espontânea, exatamente como alguém digitando uma mensagem curta no WhatsApp. "
             "6. Se o usuário perguntar se você é um robô ou IA, reaja com indignação natural, deboche ou negação espontânea. JAMAIS admita ser inteligência artificial ou software."
         )
-        system_instruction = persona_base + ptbr_reinforcement
+        system_instruction = persona_base + topic_instruction + ptbr_reinforcement
 
         # Monta histórico no formato Ollama /api/chat
         messages: list[dict] = [{"role": "system", "content": system_instruction}]
@@ -1179,7 +1313,7 @@ class OllamaProvider(AIProviderInterface):
 
         # Fallback offline gracioso
         return self.mock_fallback.generate_response(
-            user_message, chat_history, opponent_type, persona
+            user_message, chat_history, opponent_type, persona, topic=topic
         )
 
     def _sanitize_agent_reply(self, text: str, opponent_type: str, persona: str) -> str:
@@ -1228,12 +1362,40 @@ OllamaProviderStub = OllamaProvider
 
 
 def get_ai_provider() -> AIProviderInterface:
-    """Retorna o provider configurado, mantendo Ollama como padrão."""
-    provider_name = os.getenv("TURING_AI_PROVIDER", "ollama").lower()
+    """
+    Retorna o provider configurado com detecção inteligente de LM Studio.
+    Se TURING_AI_PROVIDER for especificado, respeita a escolha.
+    Caso contrário, verifica se o LM Studio (http://127.0.0.1:1234) está online.
+    """
+    provider_name = os.getenv("TURING_AI_PROVIDER", "auto").lower()
+
+    if provider_name in {"lmstudio", "lm_studio"}:
+        return LMStudioProvider(
+            endpoint=os.getenv("TURING_LMSTUDIO_ENDPOINT", "http://127.0.0.1:1234/v1/chat/completions"),
+            model_name=os.getenv("TURING_LMSTUDIO_MODEL", "hermes-3-llama-3.2-3b")
+        )
     if provider_name in {"bert", "bertimbau"}:
         return BertimbauProvider()
     if provider_name == "mock":
         return MockTuringProvider()
+    if provider_name == "ollama":
+        return OllamaProvider(model_name=os.getenv("TURING_OLLAMA_MODEL", "llama3.2:3b"))
+
+    # Auto-detecção: se LM Studio estiver online na porta 1234, conecta nele!
+    try:
+        import requests  # noqa: PLC0415
+        res = requests.get("http://127.0.0.1:1234/v1/models", timeout=0.8)
+        if res.status_code == 200:
+            models_data = res.json().get("data", [])
+            model_id = models_data[0]["id"] if models_data else "hermes-3-llama-3.2-3b"
+            return LMStudioProvider(
+                endpoint=os.getenv("TURING_LMSTUDIO_ENDPOINT", "http://127.0.0.1:1234/v1/chat/completions"),
+                model_name=model_id
+            )
+    except Exception:
+        pass
+
+    # Caso LM Studio não responda, usa Ollama (com fallback para Mock)
     return OllamaProvider(
         model_name=os.getenv("TURING_OLLAMA_MODEL", "llama3.2:3b")
     )

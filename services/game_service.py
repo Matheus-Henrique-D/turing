@@ -11,7 +11,8 @@ from core.config import (
     STATUS_VOTING,
     STATUS_FINISHED,
     STATUS_WAITING_OPERATOR,
-    STATUS_OPERATOR_ACTIVE
+    STATUS_OPERATOR_ACTIVE,
+    ROUND_TOPICS
 )
 from models.session import GameSession, SessionRepository
 from models.message import Message, MessageRepository
@@ -39,10 +40,13 @@ class GameService:
         else:
             persona = random.choice(AI_PERSONAS)
 
+        topic = random.choice(ROUND_TOPICS)
+
         session = SessionRepository.create(
             user_id=user_id,
             opponent_type=opponent_type,
-            persona=persona
+            persona=persona,
+            topic=topic
         )
         return session
 
@@ -79,7 +83,7 @@ class GameService:
             # Não gera resposta automática; o operador responderá pelo painel
             return None, STATUS_OPERATOR_ACTIVE
 
-        # 2. Resposta do interlocutor misterioso (Mock Turing Engine)
+        # 2. Resposta do interlocutor misterioso (com tema da rodada e persona)
         history_msgs = MessageRepository.list_by_session(session_id)
         history_payload = [{"role": m.sender_type, "content": m.content} for m in history_msgs]
         
@@ -87,7 +91,8 @@ class GameService:
             user_message=content,
             chat_history=history_payload,
             opponent_type=session.opponent_type,
-            persona=session.persona
+            persona=session.persona,
+            topic=session.topic
         )
 
         sender_tag = "simulated_human" if session.opponent_type == "HUMAN" else "ai"

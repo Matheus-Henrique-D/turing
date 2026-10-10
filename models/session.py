@@ -28,9 +28,11 @@ class GameSession:
     is_win: Optional[bool]
     created_at: str
     finished_at: Optional[str]
+    topic: Optional[str] = None
 
     @classmethod
     def from_row(cls, row) -> "GameSession":
+        topic_val = row["topic"] if "topic" in row.keys() else None
         return cls(
             id=row["id"],
             user_id=row["user_id"],
@@ -41,19 +43,20 @@ class GameSession:
             user_guess=row["user_guess"],
             is_win=bool(row["is_win"]) if row["is_win"] is not None else None,
             created_at=row["created_at"],
-            finished_at=row["finished_at"]
+            finished_at=row["finished_at"],
+            topic=topic_val
         )
 
 class SessionRepository:
     @staticmethod
-    def create(user_id: int, opponent_type: str, persona: str) -> GameSession:
+    def create(user_id: int, opponent_type: str, persona: str, topic: Optional[str] = None) -> GameSession:
         session_id = str(uuid.uuid4())
         now = datetime.now().isoformat()
         with get_db_connection() as conn:
             conn.execute("""
-            INSERT INTO game_sessions (id, user_id, opponent_type, persona, status, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """, (session_id, user_id, opponent_type, persona, STATUS_ACTIVE, now))
+            INSERT INTO game_sessions (id, user_id, opponent_type, persona, topic, status, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (session_id, user_id, opponent_type, persona, topic, STATUS_ACTIVE, now))
         return SessionRepository.get_by_id(session_id)
 
     @staticmethod

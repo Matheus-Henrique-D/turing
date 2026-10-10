@@ -708,14 +708,25 @@ with st.sidebar:
 
     st.markdown("---")
     st.caption("🧠 **Provedor de Inteligência Artificial**")
-    provider_name = os.getenv("TURING_AI_PROVIDER", "ollama").lower()
-    provider_label = {
-        "ollama": "Ollama Local (Llama 3.2)",
-        "bert": "BERTimbau Base",
-        "bertimbau": "BERTimbau Base",
-        "mock": "Modo Heurístico Offline",
-    }.get(provider_name, provider_name.title())
-    st.info(f"**{provider_label}**\n\nMotor de inferência ativo")
+    lm_studio_online = False
+    try:
+        import requests  # noqa: PLC0415
+        r = requests.get("http://127.0.0.1:1234/v1/models", timeout=0.5)
+        lm_studio_online = (r.status_code == 200)
+    except Exception:
+        pass
+
+    if lm_studio_online:
+        st.success("🟢 **LM Studio Conectado**\nPorta 1234 (Hermes 3 / Llama 3.2)")
+    else:
+        provider_name = os.getenv("TURING_AI_PROVIDER", "auto").lower()
+        provider_label = {
+            "ollama": "Ollama Local (Llama 3.2)",
+            "bert": "BERTimbau Base",
+            "mock": "Modo Heurístico Offline",
+            "auto": "Ollama / Auto",
+        }.get(provider_name, provider_name.title())
+        st.info(f"**{provider_label}**\n\nMotor de inferência ativo")
 
 
 # ==============================================================================
@@ -757,6 +768,15 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
     user_msgs = [m for m in game_service.get_messages(current_session.id) if m.sender_type == "user"]
     turn_count = len(user_msgs)
     progress_ratio = min(turn_count / MAX_TURNS_PER_GAME, 1.0)
+
+    # Banner de Tema Central da Rodada
+    if getattr(current_session, "topic", None):
+        st.markdown(f"""
+        <div style="background: rgba(0, 255, 85, 0.07); border: 1px solid var(--neon-green-dim); border-left: 4px solid var(--neon-green); padding: 10px 16px; border-radius: 2px; margin-bottom: 14px;">
+            <div style="font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; font-weight: 700;">TEMA CENTRAL DA RODADA</div>
+            <div style="font-size: 1.02rem; color: var(--neon-green); font-weight: 600; margin-top: 2px;">{current_session.topic}</div>
+        </div>
+        """, unsafe_allow_html=True)
 
     # Header da partida (Turnos + Botão de Handoff)
     col_bar, col_tag, col_hand = st.columns([3, 1, 1])

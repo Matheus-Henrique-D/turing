@@ -18,6 +18,20 @@ DATABASE_PATH = DATA_DIR / "turing_platform.db"
 MAX_TURNS_PER_GAME = 5
 OPPONENT_TYPES = ["HUMAN", "AI"]
 
+# Temas Oficiais por Rodada (Icebreakers de Conversa)
+ROUND_TOPICS = [
+    "🍕 Comidas Polêmicas: Qual prato popular todo mundo ama mas você não suporta?",
+    "🎬 Cinema & Séries: Qual filme aclamado você achou chato ou superestimado?",
+    "🧟 Dilema Apocalíptico: Qual seria seu plano se um apocalipse zumbi começasse hoje?",
+    "💸 Mega da Virada: Qual a primeira coisa bizarra que você compraria se ficasse milionário?",
+    "🕹️ Nostalgia & Jogos: Qual jogo ou desenho animado mais marcou a sua infância?",
+    "📱 Tecnologia & Vida: Você preferiria viver sem internet por 1 ano ou sem comida gostosa?",
+    "🎒 Perrengues Reais: Qual foi o maior mico ou situação vergonhosa que você já passou?",
+    "🎵 Gosto Musical: Qual música inusitada você escuta escondido no fone de ouvido?",
+    "🚀 Teorias Malucas: Você acredita que já estamos sendo visitados por extraterrestres?",
+    "💼 Rotina & Sonhos: Se você não precisasse de dinheiro, com o que gastaria seu tempo?"
+]
+
 # Perfis de Acesso (RBAC)
 ROLE_USUARIO = "usuario"
 ROLE_OPERADOR = "operador"
