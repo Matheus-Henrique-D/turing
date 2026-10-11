@@ -80,16 +80,27 @@ class GameService:
             content=content
         )
 
-        user_turn_count = MessageRepository.count_user_messages(session_id)
+        all_msgs = MessageRepository.list_by_session(session_id)
+        user_msgs = [m for m in all_msgs if m.sender_name == username]
+        user_turn_count = len(user_msgs)
+
+        # Se for partida MULTIJOGADOR REAL (Humano vs Humano em computadores diferentes)
+        if session.is_multiplayer:
+            # Em multijogador, não há geração de IA. A resposta virá do outro jogador.
+            # Verifica se o limite de turnos foi atingido
+            # (quando o jogador ou o total de trocas atingir o limite estipulado)
+            if len(all_msgs) >= (MAX_TURNS_PER_GAME * 2):
+                SessionRepository.update_status(session_id, STATUS_VOTING)
+                return None, STATUS_VOTING
+            return None, STATUS_ACTIVE
 
         # Se um operador humano assumiu a sessão (Handoff)
         if session.status == STATUS_OPERATOR_ACTIVE:
             # Não gera resposta automática; o operador responderá pelo painel
             return None, STATUS_OPERATOR_ACTIVE
 
-        # 2. Resposta do interlocutor misterioso (com tema da rodada e persona)
-        history_msgs = MessageRepository.list_by_session(session_id)
-        history_payload = [{"role": m.sender_type, "content": m.content} for m in history_msgs]
+        # 2. Resposta do interlocutor misterioso IA (com tema da rodada e persona)
+        history_payload = [{"role": m.sender_type, "content": m.content} for m in all_msgs]
         
         reply_text = self.ai_provider.generate_response(
             user_message=content,
@@ -107,14 +118,14 @@ class GameService:
             content=reply_text
         )
 
-        # 3. Verificação do limite de turnos
+        # 3. Verificação do limite de turnos (partida singleplayer)
         if user_turn_count >= MAX_TURNS_PER_GAME:
             SessionRepository.update_status(session_id, STATUS_VOTING)
             return reply_text, STATUS_VOTING
 
         return reply_text, STATUS_ACTIVE
 
-    def submit_vote(self, session_id: str, user_guess: str) -> Tuple[bool, str, str]:
+    def submit_vote(self, session_id: str, user_guess: str, user_id: Optional[int] = None) -> Tuple[bool, str, str]:
         """
         Processa o voto do usuário ('AI' ou 'HUMAN').
         Retorna (is_win, actual_opponent, mensagem).
@@ -126,10 +137,10 @@ class GameService:
         if user_guess not in ["AI", "HUMAN"]:
             return False, "", "Opção de voto inválida."
 
-        is_win = (session.opponent_type == user_guess)
-        SessionRepository.record_vote(session_id, user_guess, is_win)
-
         actual = session.opponent_type
+        is_win = (actual == user_guess)
+        SessionRepository.record_vote(session_id, user_guess, is_win, user_id=user_id)
+
         return is_win, actual, "Voto computado com sucesso."
 
     def get_user_statistics(self, user_id: int) -> dict:
