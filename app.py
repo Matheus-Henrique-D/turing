@@ -38,7 +38,8 @@ from services.auth_service import AuthService
 from services.game_service import GameService
 from services.handoff_service import HandoffService
 from services.admin_service import AdminService
-from models.user import User
+from services.matchmaking_service import MatchmakingService
+from models.user import User, UserRepository
 
 # Inicializa o banco de dados e sementes padrão
 init_db()
@@ -479,6 +480,138 @@ st.markdown("""
     50% { transform: scale(1.03); opacity: 1; }
     100% { transform: scale(1.0); }
   }
+  /* ── Radar de Matchmaking Multijogador ─────────────────────── */
+  .radar-container {
+    background: radial-gradient(circle at center, #06193d 0%, #020b1e 75%);
+    border: 2px solid var(--neon-green);
+    border-radius: 6px;
+    padding: 34px 20px;
+    text-align: center;
+    box-shadow: 0 0 30px rgba(0, 255, 85, 0.25), inset 0 0 25px rgba(0, 255, 85, 0.08);
+    position: relative;
+    overflow: hidden;
+    margin: 20px 0;
+  }
+  .radar-dish {
+    width: 140px;
+    height: 140px;
+    margin: 0 auto 18px auto;
+    border-radius: 50%;
+    border: 2px solid var(--neon-green-dim);
+    position: relative;
+    box-shadow: 0 0 18px rgba(0, 255, 85, 0.35);
+    background: radial-gradient(circle at center, rgba(0, 255, 85, 0.12) 0%, transparent 70%);
+  }
+  .radar-dish::before {
+    content: '';
+    position: absolute;
+    inset: 22px;
+    border-radius: 50%;
+    border: 1px dashed rgba(0, 255, 85, 0.4);
+  }
+  .radar-dish::after {
+    content: '';
+    position: absolute;
+    inset: 46px;
+    border-radius: 50%;
+    border: 1px solid rgba(0, 255, 85, 0.55);
+  }
+  .radar-sweep {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 68px;
+    height: 68px;
+    transform-origin: top left;
+    background: linear-gradient(45deg, rgba(0, 255, 85, 0.6) 0%, transparent 65%);
+    border-radius: 0 0 100% 0;
+    animation: radar-spin 2s linear infinite;
+  }
+  @keyframes radar-spin {
+    0%   { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+  .radar-ping {
+    position: absolute;
+    top: 32%;
+    left: 68%;
+    width: 9px;
+    height: 9px;
+    background: var(--neon-magenta);
+    border-radius: 50%;
+    box-shadow: 0 0 12px var(--neon-magenta);
+    animation: ping-pulse 1.3s ease-in-out infinite alternate;
+  }
+  @keyframes ping-pulse {
+    0%   { transform: scale(0.6); opacity: 0.3; }
+    100% { transform: scale(1.6); opacity: 1; }
+  }
+  .radar-title {
+    font-family: var(--font-pixel), monospace;
+    font-size: 2.1rem;
+    color: var(--neon-green);
+    letter-spacing: 0.08em;
+    text-shadow: 0 0 12px var(--neon-green);
+    margin-bottom: 6px;
+  }
+  .radar-status {
+    color: var(--ink);
+    font-size: 1.05rem;
+    margin-bottom: 8px;
+  }
+  .radar-timer {
+    font-family: var(--font-mono), monospace;
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: var(--warn);
+    text-shadow: 0 0 12px rgba(255, 190, 26, 0.5);
+    margin-bottom: 12px;
+  }
+
+  /* ── Lobby Cards & Turn Banners ──────────────────────────── */
+  .turn-wait-banner {
+    background: rgba(255, 0, 128, 0.08);
+    border: 1px solid var(--neon-magenta);
+    border-left: 4px solid var(--neon-magenta);
+    padding: 12px 18px;
+    border-radius: 2px;
+    color: #ff99cc;
+    font-family: var(--font-mono), monospace;
+    font-size: 1.02rem;
+    margin: 12px 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    animation: soft-pulse 1.8s infinite alternate;
+  }
+  @keyframes soft-pulse {
+    0% { opacity: 0.85; }
+    100% { opacity: 1; }
+  }
+
+  .arcade-stat-card {
+    background: var(--bg-card);
+    border: 1px solid var(--line);
+    border-top: 2px solid var(--neon-green);
+    border-radius: 3px;
+    padding: 16px;
+    text-align: center;
+    box-shadow: 0 0 14px rgba(0, 255, 85, 0.08);
+  }
+  .arcade-stat-num {
+    font-family: var(--font-pixel), monospace;
+    font-size: 2.4rem;
+    color: var(--neon-green);
+    line-height: 1;
+    margin-bottom: 4px;
+    text-shadow: 0 0 10px var(--neon-green);
+  }
+  .arcade-stat-label {
+    font-size: 0.8rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
 
   /* ── Cards de Votação e Resultados ────────────────────────── */
   .vote-panel {
@@ -604,6 +737,10 @@ if "past_round_topics" not in st.session_state:
     st.session_state.past_round_topics = []
 if "show_topic_roulette" not in st.session_state:
     st.session_state.show_topic_roulette = False
+if "is_searching_match" not in st.session_state:
+    st.session_state.is_searching_match = False
+if "match_search_start_time" not in st.session_state:
+    st.session_state.match_search_start_time = None
 
 
 
@@ -674,35 +811,76 @@ def render_timer_hud(elapsed: float, limit: float):
 
 def render_topic_roulette_animation(selected_topic: str):
     """
-    Executa a animação automática estilo slot machine / roleta arcade neon
-    sorteando o tema no início da rodada.
+    Animação automática estilo slot machine retro-arcade com desaceleração ease-out.
+    Gira rápido → desacelera gradualmente → trava no tema com efeito neon.
     """
     import random
     from core.config import ROUND_TOPICS
 
     placeholder = st.empty()
     other_topics = [t for t in ROUND_TOPICS if t != selected_topic]
-    sample_pool = random.sample(other_topics, min(8, len(other_topics)))
 
-    # Passos da animação da roleta girando
-    for idx, candidate in enumerate(sample_pool):
+    # Gera sequência de frames com desaceleração realista (ease-out)
+    # 18 frames: rápido no início (0.06s), vai desacelerando até 0.35s por frame
+    frame_delays = (
+        [0.06] * 5   +  # burst inicial (muito rápido)
+        [0.10] * 4   +  # desacelerando suave
+        [0.16] * 3   +  # mais lento
+        [0.24] * 3   +  # quase parando
+        [0.33] * 2   +  # último suspiro
+        [0.42]           # frame de "quase" antes do lock
+    )
+
+    sample_pool = random.choices(other_topics, k=len(frame_delays))
+
+    # Animação girando com velocidade decrescente
+    for idx, (candidate, delay) in enumerate(zip(sample_pool, frame_delays)):
+        # Nos últimos 3 frames muda o header para criar suspense
+        if idx >= len(frame_delays) - 3:
+            header_text = "🎰 QUASE LÁ... 🎰"
+        elif idx >= len(frame_delays) - 6:
+            header_text = "🎰 SORTEANDO... 🎰"
+        else:
+            header_text = "🎰 SORTEANDO TEMA DA RODADA... 🎰"
+
         placeholder.markdown(f"""
         <div class="roulette-container">
-            <div class="roulette-header">🎰 SORTEANDO TEMA DA RODADA... 🎰</div>
+            <div class="roulette-header">{header_text}</div>
             <div class="roulette-slot roulette-spinning">{candidate}</div>
         </div>
         """, unsafe_allow_html=True)
-        time.sleep(0.08 + (idx * 0.015))
+        time.sleep(delay)
 
-    # Fixação final no tema selecionado com efeito neon locked
+    # Exibe o tema final com efeito neon locked por 2.5 segundos
     placeholder.markdown(f"""
     <div class="roulette-container">
         <div class="roulette-header">✨ TEMA DEFINIDO PARA ESTA RODADA! ✨</div>
         <div class="roulette-slot roulette-selected">{selected_topic}</div>
     </div>
     """, unsafe_allow_html=True)
-    time.sleep(0.9)
+    time.sleep(2.5)
     placeholder.empty()
+
+
+def render_matchmaking_radar(elapsed_seconds: float, timeout_seconds: int = 20, waiting_count: int = 1):
+    """Renderiza radar arcade com efeito circular e contagem regressiva."""
+    st.markdown(f"""
+    <div class="radar-container">
+        <div class="radar-dish">
+            <div class="radar-sweep"></div>
+            <div class="radar-ping"></div>
+        </div>
+        <div class="radar-title">BUSCANDO INTERLOCUTOR NA REDE...</div>
+        <div class="radar-status">Varrendo conexões ativas • Jogadores na fila: <b>{waiting_count}</b></div>
+        <div class="radar-timer">⏱ {int(elapsed_seconds):02d}s / {timeout_seconds:02d}s</div>
+        <div style="font-size:0.85rem; color:var(--muted); max-width:480px; margin:0 auto;">
+            Se outro jogador for detectado, a partida iniciará com 2 humanos reais!<br>
+            Caso ninguém conecte até o tempo limite, a IA assumirá o teste automaticamente.
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+
 
 
 
@@ -823,74 +1001,203 @@ with st.sidebar:
 # ==============================================================================
 if selected_view == "🎮 Jogar (Teste de Turing)":
     st.markdown("<div class='main-header'>HUMAN OR NOT?</div>", unsafe_allow_html=True)
-    st.markdown("<p style='color:var(--muted); margin-bottom: 20px;'>Descubra em 5 mensagens se você está conversando com um Humano ou com uma IA.</p>", unsafe_allow_html=True)
+    st.markdown("<p style='color:var(--muted); margin-bottom: 20px;'>Descubra em 5 mensagens se você está conversando com um Humano real ou com uma IA.</p>", unsafe_allow_html=True)
 
-    # Iniciar partida caso não haja sessão ativa
-    if not st.session_state.active_session_id:
-        if st.button("🎲 INICIAR NOVA PARTIDA", type="primary", use_container_width=True):
-            # Garante que não repita temas de rodadas anteriores
+    # ── ESTADO 1: RADAR DE MATCHMAKING EM ANDAMENTO ─────────────────────────────
+    if st.session_state.is_searching_match and not st.session_state.active_session_id:
+        elapsed = time.time() - (st.session_state.match_search_start_time or time.time())
+        waiting_count = MatchmakingService.get_waiting_count()
+
+        # Consulta periodicamente se foi pareado
+        poll_res = MatchmakingService.poll_queue_status(
+            user.id,
+            user.username,
+            exclude_topics=st.session_state.past_round_topics
+        )
+
+        if poll_res["status"] == "matched" and poll_res.get("session_id"):
+            st.session_state.active_session_id = poll_res["session_id"]
+            st.session_state.is_searching_match = False
+            st.session_state.turn_start_time = time.time()
+            st.session_state.turn_index_at_start = 0
+            st.session_state.timer_expired_handled = False
+            st.session_state.turn_limit_seconds = 45
+            st.session_state.show_topic_roulette = True
+            st.rerun()
+
+        # Timeout do radar (20s): inicia contra IA para não travar o jogador
+        if elapsed >= 20.0:
+            MatchmakingService.leave_queue(user.id)
             new_session = game_service.start_new_game(
                 user.id,
                 exclude_topics=st.session_state.past_round_topics
             )
             st.session_state.active_session_id = new_session.id
+            st.session_state.is_searching_match = False
             st.session_state.turn_start_time = time.time()
             st.session_state.turn_index_at_start = 0
             st.session_state.timer_expired_handled = False
-            # Timer fixo de 45 segundos por turno
             st.session_state.turn_limit_seconds = 45
-            # Ativa animação da roleta para o novo tema sorteado
             st.session_state.show_topic_roulette = True
             if new_session.topic:
                 st.session_state.past_round_topics.append(new_session.topic)
             st.rerun()
-        else:
-            stats = game_service.get_user_statistics(user.id)
-            st.markdown("---")
-            st.subheader("📊 Histórico do Jogador")
-            col1, col2, col3 = st.columns(3)
-            col1.metric("Partidas Jogadas", stats["total_games"])
-            col2.metric("Vitórias", stats["wins"])
-            col3.metric("Taxa de Acerto", f"{stats['win_rate']:.1f}%")
-            st.stop()
 
+        # Renderiza animação do Radar
+        render_matchmaking_radar(elapsed, timeout_seconds=20, waiting_count=waiting_count)
+
+        col_rc1, col_rc2 = st.columns(2)
+        with col_rc1:
+            if st.button("⚡ JOGAR COM IA IMEDIATAMENTE", use_container_width=True):
+                MatchmakingService.leave_queue(user.id)
+                new_session = game_service.start_new_game(
+                    user.id,
+                    exclude_topics=st.session_state.past_round_topics
+                )
+                st.session_state.active_session_id = new_session.id
+                st.session_state.is_searching_match = False
+                st.session_state.turn_start_time = time.time()
+                st.session_state.turn_index_at_start = 0
+                st.session_state.timer_expired_handled = False
+                st.session_state.turn_limit_seconds = 45
+                st.session_state.show_topic_roulette = True
+                if new_session.topic:
+                    st.session_state.past_round_topics.append(new_session.topic)
+                st.rerun()
+        with col_rc2:
+            if st.button("❌ CANCELAR BUSCA", use_container_width=True):
+                MatchmakingService.leave_queue(user.id)
+                st.session_state.is_searching_match = False
+                st.rerun()
+
+        if _HAS_AUTOREFRESH:
+            st_autorefresh(interval=1000, key="matchmaking_radar_refresh")
+        st.stop()
+
+    # ── ESTADO 2: LOBBY INICIAL (SEM PARTIDA ATIVA) ─────────────────────────────
+    if not st.session_state.active_session_id:
+        waiting_players = MatchmakingService.get_waiting_count()
+        queue_badge = f"🟢 {waiting_players} jogador(es) na fila" if waiting_players > 0 else "⚪ Fila vazia"
+
+        st.markdown(f"""
+        <div style="background: var(--bg-card); border: 1px solid var(--line); border-left: 4px solid var(--neon-green); padding: 16px 20px; border-radius: 4px; margin-bottom: 22px;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <div>
+                    <h3 style="color:var(--neon-green); margin:0 0 4px 0; font-family:var(--font-pixel); font-size:1.8rem;">SALA DE MATCHMAKING TURING</h3>
+                    <div style="color:var(--muted); font-size:0.95rem;">Conecte-se com jogadores em outros computadores ou teste sua percepção contra o modelo local.</div>
+                </div>
+                <div class="hud-badge">{queue_badge}</div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        col_b1, col_b2 = st.columns(2)
+        with col_b1:
+            if st.button("🎮 BUSCAR PARTIDA (HUMANO OU IA)", type="primary", use_container_width=True):
+                match_res = MatchmakingService.join_queue(
+                    user.id,
+                    user.username,
+                    exclude_topics=st.session_state.past_round_topics
+                )
+                if match_res["status"] == "matched" and match_res.get("session_id"):
+                    # Pareamento imediato encontrado com outro humano!
+                    st.session_state.active_session_id = match_res["session_id"]
+                    st.session_state.turn_start_time = time.time()
+                    st.session_state.turn_index_at_start = 0
+                    st.session_state.timer_expired_handled = False
+                    st.session_state.turn_limit_seconds = 45
+                    st.session_state.show_topic_roulette = True
+                else:
+                    # Entra na tela de radar de busca
+                    st.session_state.is_searching_match = True
+                    st.session_state.match_search_start_time = time.time()
+                st.rerun()
+
+        with col_b2:
+            if st.button("🤖 TREINO RÁPIDO CONTRA IA", use_container_width=True):
+                new_session = game_service.start_new_game(
+                    user.id,
+                    exclude_topics=st.session_state.past_round_topics
+                )
+                st.session_state.active_session_id = new_session.id
+                st.session_state.turn_start_time = time.time()
+                st.session_state.turn_index_at_start = 0
+                st.session_state.timer_expired_handled = False
+                st.session_state.turn_limit_seconds = 45
+                st.session_state.show_topic_roulette = True
+                if new_session.topic:
+                    st.session_state.past_round_topics.append(new_session.topic)
+                st.rerun()
+
+        # Painel estatístico estilizado estilo arcade
+        stats = game_service.get_user_statistics(user.id)
+        st.markdown("<br>", unsafe_allow_html=True)
+        col_s1, col_s2, col_s3 = st.columns(3)
+        with col_s1:
+            st.markdown(f"""
+            <div class="arcade-stat-card">
+                <div class="arcade-stat-num">{stats['total_games']}</div>
+                <div class="arcade-stat-label">Partidas Jogadas</div>
+            </div>
+            """, unsafe_allow_html=True)
+        with col_s2:
+            st.markdown(f"""
+            <div class="arcade-stat-card">
+                <div class="arcade-stat-num">{stats['wins']}</div>
+                <div class="arcade-stat-label">Vitórias (Acertos)</div>
+            </div>
+            """, unsafe_allow_html=True)
+        with col_s3:
+            st.markdown(f"""
+            <div class="arcade-stat-card">
+                <div class="arcade-stat-num">{stats['win_rate']:.1f}%</div>
+                <div class="arcade-stat-label">Taxa de Acerto</div>
+            </div>
+            """, unsafe_allow_html=True)
+        st.stop()
+
+    # ── ESTADO 3: PARTIDA EM ANDAMENTO OU FINALIZADA ───────────────────────────
     current_session = game_service.get_session(st.session_state.active_session_id)
     if not current_session:
         st.session_state.active_session_id = None
         st.rerun()
+
+    is_multiplayer = getattr(current_session, "is_multiplayer", False)
 
     # Roleta automática do tema executada apenas uma vez no início da rodada
     if st.session_state.show_topic_roulette and getattr(current_session, "topic", None):
         render_topic_roulette_animation(current_session.topic)
         st.session_state.show_topic_roulette = False
 
-    # Contagem de turnos do jogador
-    user_msgs = [m for m in game_service.get_messages(current_session.id) if m.sender_type == "user"]
-    turn_count = len(user_msgs)
-    progress_ratio = min(turn_count / MAX_TURNS_PER_GAME, 1.0)
+    # Histórico de mensagens
+    messages = game_service.get_messages(current_session.id)
+    my_msgs = [m for m in messages if m.sender_name == user.username]
+    my_turn_count = len(my_msgs)
 
     # Banner de Tema Central da Rodada
     if getattr(current_session, "topic", None):
+        mp_tag = " [MODO MULTIJOGADOR]" if is_multiplayer else ""
         st.markdown(f"""
         <div style="background: rgba(0, 255, 85, 0.07); border: 1px solid var(--neon-green-dim); border-left: 4px solid var(--neon-green); padding: 10px 16px; border-radius: 2px; margin-bottom: 14px;">
-            <div style="font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; font-weight: 700;">TEMA CENTRAL DA RODADA</div>
-            <div style="font-size: 1.02rem; color: var(--neon-green); font-weight: 600; margin-top: 2px;">{current_session.topic}</div>
+            <div style="font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; font-weight: 700;">TEMA CENTRAL DA RODADA{mp_tag}</div>
+            <div style="font-size: 1.05rem; color: var(--neon-green); font-weight: 600; margin-top: 2px;">{current_session.topic}</div>
         </div>
         """, unsafe_allow_html=True)
 
     # Header da partida (Turnos + Botão de Handoff)
+    progress_ratio = min(my_turn_count / MAX_TURNS_PER_GAME, 1.0)
     col_bar, col_tag, col_hand = st.columns([3, 1, 1])
     with col_bar:
         st.progress(progress_ratio)
     with col_tag:
-        st.markdown(f"<div class='hud-badge'>TURNO {turn_count}/{MAX_TURNS_PER_GAME}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='hud-badge'>TURNO {my_turn_count}/{MAX_TURNS_PER_GAME}</div>", unsafe_allow_html=True)
     with col_hand:
-        if current_session.status == STATUS_ACTIVE:
+        if current_session.status == STATUS_ACTIVE and not is_multiplayer:
             if st.button("🙋 Falar com Humano", help="Solicitar atendimento com um operador humano real"):
                 HandoffService.request_human_handoff(current_session.id, user.id)
                 st.rerun()
 
-    # Alertas de Handoff Humano
+    # Alertas de Handoff Humano (Singleplayer)
     if current_session.status == STATUS_WAITING_OPERATOR:
         st.warning("⏳ **Aguardando operador:** Conversa inserida na fila de atendimento.")
     elif current_session.status == STATUS_OPERATOR_ACTIVE:
@@ -898,123 +1205,155 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
 
     st.write("")
 
-    # Renderiza histórico do chat
-    messages = game_service.get_messages(current_session.id)
+    # Renderiza mensagens com estrito anonimato
     for m in messages:
-        if m.sender_type == "user":
+        if m.sender_name == user.username:
             render_chat_bubble(m.content, role="user")
         elif m.sender_type == "operator":
             render_chat_bubble(f"[Operador {m.sender_name}]: {m.content}", role="opponent")
         elif m.sender_type == "system":
             render_chat_bubble(m.content, role="system")
         else:
+            # Mensagem do interlocutor misterioso (seja IA ou outro jogador humano real)
             render_chat_bubble(m.content, role="opponent")
 
     # ── 1. Conversa Ativa ──────────────────────────────────────────────────────
     if current_session.status in [STATUS_ACTIVE, STATUS_OPERATOR_ACTIVE]:
-        if turn_count < MAX_TURNS_PER_GAME:
+        if my_turn_count < MAX_TURNS_PER_GAME:
 
-            # Reset do timer ao iniciar um novo turno
-            if st.session_state.turn_index_at_start != turn_count:
-                st.session_state.turn_start_time = time.time()
-                st.session_state.turn_index_at_start = turn_count
-                st.session_state.timer_expired_handled = False
-                st.session_state.turn_limit_seconds = 45
+            # Lógica de alternância de turno no Multijogador
+            is_my_turn = True
+            if is_multiplayer:
+                if len(messages) > 0 and messages[-1].sender_name == user.username:
+                    is_my_turn = False
 
-            elapsed = time.time() - (st.session_state.turn_start_time or time.time())
-            limit = st.session_state.turn_limit_seconds
+            # Reset do timer ao iniciar a vez do jogador
+            if is_my_turn:
+                if st.session_state.turn_index_at_start != my_turn_count:
+                    st.session_state.turn_start_time = time.time()
+                    st.session_state.turn_index_at_start = my_turn_count
+                    st.session_state.timer_expired_handled = False
+                    st.session_state.turn_limit_seconds = 45
 
-            # Exibe HUD do timer durante chat ativo
-            if current_session.status == STATUS_ACTIVE:
+                elapsed = time.time() - (st.session_state.turn_start_time or time.time())
+                limit = st.session_state.turn_limit_seconds
+
+                # HUD do Timer digital 45s
                 render_timer_hud(elapsed, limit)
 
-            # Expiração do timer: envia mensagem padrão "..." automaticamente
-            # Decisão de design: enviar "..." reaproveita send_user_message com consistência.
-            if (
-                current_session.status == STATUS_ACTIVE
-                and elapsed >= limit
-                and not st.session_state.timer_expired_handled
-            ):
-                st.session_state.timer_expired_handled = True
-                st.warning("⏰ Tempo esgotado! Turno enviado automaticamente.")
-                typing_placeholder = st.empty()
-                with typing_placeholder:
-                    render_typing_indicator()
+                # Expiração do timer: envia mensagem automática "..."
+                if elapsed >= limit and not st.session_state.timer_expired_handled:
+                    st.session_state.timer_expired_handled = True
+                    st.warning("⏰ Tempo esgotado! Turno enviado automaticamente.")
+                    game_service.send_user_message(current_session.id, user.username, "...")
+                    st.rerun()
 
-                reply, next_status = game_service.send_user_message(
-                    current_session.id, user.username, "..."
-                )
-                if reply:
-                    delay = len(reply) * 0.035 + random.uniform(0.3, 0.8)
-                    time.sleep(min(delay, 3.0))
+                # Caixa de entrada do jogador
+                user_input = st.chat_input("Digite sua mensagem para o interlocutor misterioso...")
+                if user_input:
+                    typing_placeholder = st.empty()
+                    with typing_placeholder:
+                        render_typing_indicator()
 
-                typing_placeholder.empty()
-                st.rerun()
+                    reply, next_status = game_service.send_user_message(
+                        current_session.id,
+                        user.username,
+                        user_input,
+                    )
 
-            # Entrada de texto do jogador
-            user_input = st.chat_input("Digite sua mensagem para o interlocutor...")
-            if user_input:
-                typing_placeholder = st.empty()
-                with typing_placeholder:
-                    render_typing_indicator()
+                    if reply and not is_multiplayer:
+                        delay = len(reply) * 0.035 + random.uniform(0.3, 0.8)
+                        time.sleep(min(delay, 3.2))
 
-                reply, next_status = game_service.send_user_message(
-                    current_session.id,
-                    user.username,
-                    user_input,
-                )
+                    typing_placeholder.empty()
+                    st.rerun()
+            else:
+                # Oponente está digitando (esperando resposta no Multijogador)
+                st.markdown("""
+                <div class="turn-wait-banner">
+                    <span>⏳</span>
+                    <span><b>Aguardando interlocutor misterioso responder...</b> O turno dele está em andamento.</span>
+                </div>
+                """, unsafe_allow_html=True)
+                render_typing_indicator()
 
-                # Delay de digitação proporcional ao tamanho da resposta gerada
-                if reply:
-                    delay = len(reply) * 0.035 + random.uniform(0.3, 0.8)
-                    time.sleep(min(delay, 3.2))
-
-                typing_placeholder.empty()
-                st.rerun()
-
-            # Rerun periódico para o timer regressivo
-            if _HAS_AUTOREFRESH and current_session.status == STATUS_ACTIVE:
-                st_autorefresh(interval=1000, key="chat_timer_refresh")
+            # Autorefresh periódico para sincronia do timer e do multijogador em tempo real
+            if _HAS_AUTOREFRESH:
+                st_autorefresh(interval=1000, key="chat_sync_refresh")
 
         else:
-            # 5 turnos finalizados -> redireciona para a votação
+            # 5 turnos finalizados -> avança para a votação
+            SessionRepository.update_status(current_session.id, STATUS_VOTING)
             st.rerun()
 
     # ── 2. Votação ─────────────────────────────────────────────────────────────
     elif current_session.status == STATUS_VOTING:
-        st.markdown("""
-        <div class="vote-panel">
-            <h3>🛑 CONVERSA FINALIZADA!</h3>
-            <p style="font-size:1.05rem;">Você completou as 5 mensagens. Com quem você acredita que estava conversando?</p>
-        </div>
-        """, unsafe_allow_html=True)
-        st.write("")
+        # Verifica se o usuário atual já votou (no caso multijogador)
+        user_already_voted = False
+        if is_multiplayer:
+            if user.id == current_session.player2_id and current_session.player2_guess is not None:
+                user_already_voted = True
+            elif user.id == current_session.user_id and current_session.user_guess is not None:
+                user_already_voted = True
 
-        col_v1, col_v2 = st.columns(2)
-        with col_v1:
-            if st.button("🤖 É UMA INTELIGÊNCIA ARTIFICIAL", use_container_width=True, type="primary"):
-                game_service.submit_vote(current_session.id, "AI")
-                st.rerun()
-        with col_v2:
-            if st.button("👤 É UM HUMANO", use_container_width=True, type="primary"):
-                game_service.submit_vote(current_session.id, "HUMAN")
-                st.rerun()
+        if user_already_voted:
+            st.markdown("""
+            <div class="vote-panel" style="text-align:center;">
+                <h3>✅ SEU VOTO FOI REGISTRADO!</h3>
+                <p style="font-size:1.1rem; color:var(--ink);">Aguardando o interlocutor misterioso concluir o voto dele...</p>
+            </div>
+            """, unsafe_allow_html=True)
+            if _HAS_AUTOREFRESH:
+                st_autorefresh(interval=1000, key="vote_sync_refresh")
+        else:
+            st.markdown("""
+            <div class="vote-panel">
+                <h3>🛑 CONVERSA FINALIZADA!</h3>
+                <p style="font-size:1.05rem;">Você trocou 5 mensagens com o interlocutor misterioso. Com base no vocabulário, tempo de resposta e conteúdo, com quem você estava conversando?</p>
+            </div>
+            """, unsafe_allow_html=True)
+            st.write("")
+
+            col_v1, col_v2 = st.columns(2)
+            with col_v1:
+                if st.button("🤖 É UMA INTELIGÊNCIA ARTIFICIAL", use_container_width=True, type="primary"):
+                    game_service.submit_vote(current_session.id, "AI", user_id=user.id)
+                    st.rerun()
+            with col_v2:
+                if st.button("👤 É UM HUMANO", use_container_width=True, type="primary"):
+                    game_service.submit_vote(current_session.id, "HUMAN", user_id=user.id)
+                    st.rerun()
 
     # ── 3. Resultado Final ─────────────────────────────────────────────────────
     elif current_session.status == STATUS_FINISHED:
         actual = current_session.opponent_type
-        voted = current_session.user_guess
-        is_win = current_session.is_win
+
+        # Determina voto e resultado do usuário atual
+        if is_multiplayer and user.id == current_session.player2_id:
+            my_guess = current_session.player2_guess
+            my_is_win = current_session.player2_is_win
+            peer_guess = current_session.user_guess
+            peer_user = UserRepository.get_by_id(current_session.user_id)
+        elif is_multiplayer:
+            my_guess = current_session.user_guess
+            my_is_win = current_session.is_win
+            peer_guess = current_session.player2_guess
+            peer_user = UserRepository.get_by_id(current_session.player2_id)
+        else:
+            my_guess = current_session.user_guess
+            my_is_win = current_session.is_win
+            peer_guess = None
+            peer_user = None
 
         actual_str = "🤖 Inteligência Artificial" if actual == "AI" else "👤 Humano"
-        voted_str = "🤖 Inteligência Artificial" if voted == "AI" else "👤 Humano"
+        voted_str = "🤖 Inteligência Artificial" if my_guess == "AI" else "👤 Humano"
 
         st.write("")
-        if is_win:
+        if my_is_win:
             st.markdown(f"""
             <div class="result-win">
                 <h2>🎉 PARABÉNS! VOCÊ ACERTOU!</h2>
-                <p style="font-size:1.15rem; margin-top:10px;">
+                <p style="font-size:1.18rem; margin-top:10px;">
                     Seu voto: <b>{voted_str}</b> &nbsp;|&nbsp; A verdade: <b>{actual_str}</b>
                 </p>
             </div>
@@ -1023,9 +1362,24 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
             st.markdown(f"""
             <div class="result-loss">
                 <h2>❌ VOCÊ FOI ENGANADO!</h2>
-                <p style="font-size:1.15rem; margin-top:10px;">
+                <p style="font-size:1.18rem; margin-top:10px;">
                     Seu voto: <b>{voted_str}</b> &nbsp;|&nbsp; A verdade: <b>{actual_str}</b>
                 </p>
+            </div>
+            """, unsafe_allow_html=True)
+
+        # Revelação da identidade real no caso Multijogador
+        if is_multiplayer and peer_user:
+            peer_guess_str = "🤖 Inteligência Artificial" if peer_guess == "AI" else "👤 Humano"
+            st.markdown(f"""
+            <div style="background: rgba(0, 255, 85, 0.05); border: 1px solid var(--neon-green-dim); padding: 18px 22px; border-radius: 4px; margin-top: 18px;">
+                <div style="font-family: var(--font-pixel); font-size: 1.5rem; color: var(--neon-green); margin-bottom: 6px;">REVELAÇÃO DO OPONENTE REAL</div>
+                <div style="font-size: 1.05rem; color: var(--ink);">
+                    Você estava conversando com o jogador <b>@{peer_user.username}</b> ({peer_user.full_name})!
+                </div>
+                <div style="font-size: 0.95rem; color: var(--muted); margin-top: 6px;">
+                    E o outro jogador votou que você era: <b style="color:var(--neon-green);">{peer_guess_str}</b>!
+                </div>
             </div>
             """, unsafe_allow_html=True)
 
@@ -1034,6 +1388,7 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
             st.session_state.active_session_id = None
             st.session_state.turn_start_time = None
             st.session_state.timer_expired_handled = False
+            st.session_state.is_searching_match = False
             st.rerun()
 
 

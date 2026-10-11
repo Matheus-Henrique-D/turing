@@ -68,10 +68,31 @@ def init_db():
         """)
         
         # Migração segura para bancos existentes
-        try:
-            cursor.execute("ALTER TABLE game_sessions ADD COLUMN topic TEXT NULL;")
-        except sqlite3.OperationalError:
-            pass
+        for col_def in [
+            "topic TEXT NULL",
+            "player2_id INTEGER NULL",
+            "player2_guess TEXT NULL",
+            "player2_is_win INTEGER NULL",
+            "is_multiplayer INTEGER DEFAULT 0"
+        ]:
+            try:
+                cursor.execute(f"ALTER TABLE game_sessions ADD COLUMN {col_def};")
+            except sqlite3.OperationalError:
+                pass
+
+        # Tabela de Fila de Matchmaking Multijogador em Tempo Real
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS matchmaking_queue (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL UNIQUE,
+            username TEXT NOT NULL,
+            status TEXT NOT NULL CHECK(status IN ('waiting', 'matched', 'cancelled')),
+            matched_session_id TEXT NULL,
+            created_at TEXT NOT NULL,
+            last_heartbeat TEXT NOT NULL
+        );
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_matchmaking_status ON matchmaking_queue(status);")
         
         # Tabela de Mensagens
         cursor.execute("""
