@@ -423,9 +423,61 @@ st.markdown("""
     box-shadow: 0 0 8px var(--neon-green);
     transition: width 0.9s linear;
   }
-  .timer-progress-fill.urgent {
-    background: var(--danger) !important;
-    box-shadow: 0 0 10px var(--danger) !important;
+  /* ── Roleta Retro-Arcade do Tema da Rodada ───────────────── */
+  .roulette-container {
+    background: var(--bg-card);
+    border: 2px solid var(--neon-magenta);
+    border-radius: 4px;
+    padding: 16px 20px;
+    margin-bottom: 20px;
+    text-align: center;
+    box-shadow: 0 0 25px rgba(255, 0, 128, 0.25), inset 0 0 15px rgba(255, 0, 128, 0.1);
+    position: relative;
+    overflow: hidden;
+  }
+  .roulette-header {
+    font-family: var(--font-pixel), monospace;
+    font-size: 1.5rem;
+    color: var(--neon-magenta);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    text-shadow: 0 0 10px var(--neon-magenta);
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+  }
+  .roulette-slot {
+    font-family: var(--font-mono), monospace;
+    font-size: 1.25rem;
+    font-weight: 700;
+    padding: 12px 18px;
+    background: #010610;
+    border: 1px solid var(--neon-magenta);
+    border-radius: 2px;
+    color: #ffffff;
+    box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 52px;
+  }
+  .roulette-spinning {
+    color: #ffb8e6 !important;
+    text-shadow: 0 0 8px #ff0080;
+    opacity: 0.85;
+  }
+  .roulette-selected {
+    color: var(--neon-green) !important;
+    border-color: var(--neon-green) !important;
+    text-shadow: 0 0 14px var(--neon-green);
+    animation: neon-lock 0.4s ease-out;
+  }
+  @keyframes neon-lock {
+    0% { transform: scale(0.96); opacity: 0.5; }
+    50% { transform: scale(1.03); opacity: 1; }
+    100% { transform: scale(1.0); }
   }
 
   /* ── Cards de Votação e Resultados ────────────────────────── */
@@ -546,10 +598,13 @@ if "turn_start_time" not in st.session_state:
     st.session_state.turn_start_time = None
 if "turn_index_at_start" not in st.session_state:
     st.session_state.turn_index_at_start = 0
-if "turn_limit_seconds" not in st.session_state:
-    st.session_state.turn_limit_seconds = 40
 if "timer_expired_handled" not in st.session_state:
     st.session_state.timer_expired_handled = False
+if "past_round_topics" not in st.session_state:
+    st.session_state.past_round_topics = []
+if "show_topic_roulette" not in st.session_state:
+    st.session_state.show_topic_roulette = False
+
 
 
 # ==============================================================================
@@ -615,6 +670,40 @@ def render_timer_hud(elapsed: float, limit: float):
         <div class="timer-clock {urgent_cls}">⏱ {seconds_display}</div>
     </div>
     """, unsafe_allow_html=True)
+
+
+def render_topic_roulette_animation(selected_topic: str):
+    """
+    Executa a animação automática estilo slot machine / roleta arcade neon
+    sorteando o tema no início da rodada.
+    """
+    import random
+    from core.config import ROUND_TOPICS
+
+    placeholder = st.empty()
+    other_topics = [t for t in ROUND_TOPICS if t != selected_topic]
+    sample_pool = random.sample(other_topics, min(8, len(other_topics)))
+
+    # Passos da animação da roleta girando
+    for idx, candidate in enumerate(sample_pool):
+        placeholder.markdown(f"""
+        <div class="roulette-container">
+            <div class="roulette-header">🎰 SORTEANDO TEMA DA RODADA... 🎰</div>
+            <div class="roulette-slot roulette-spinning">{candidate}</div>
+        </div>
+        """, unsafe_allow_html=True)
+        time.sleep(0.08 + (idx * 0.015))
+
+    # Fixação final no tema selecionado com efeito neon locked
+    placeholder.markdown(f"""
+    <div class="roulette-container">
+        <div class="roulette-header">✨ TEMA DEFINIDO PARA ESTA RODADA! ✨</div>
+        <div class="roulette-slot roulette-selected">{selected_topic}</div>
+    </div>
+    """, unsafe_allow_html=True)
+    time.sleep(0.9)
+    placeholder.empty()
+
 
 
 # ==============================================================================
@@ -739,13 +828,21 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
     # Iniciar partida caso não haja sessão ativa
     if not st.session_state.active_session_id:
         if st.button("🎲 INICIAR NOVA PARTIDA", type="primary", use_container_width=True):
-            new_session = game_service.start_new_game(user.id)
+            # Garante que não repita temas de rodadas anteriores
+            new_session = game_service.start_new_game(
+                user.id,
+                exclude_topics=st.session_state.past_round_topics
+            )
             st.session_state.active_session_id = new_session.id
             st.session_state.turn_start_time = time.time()
             st.session_state.turn_index_at_start = 0
             st.session_state.timer_expired_handled = False
             # Timer fixo de 45 segundos por turno
             st.session_state.turn_limit_seconds = 45
+            # Ativa animação da roleta para o novo tema sorteado
+            st.session_state.show_topic_roulette = True
+            if new_session.topic:
+                st.session_state.past_round_topics.append(new_session.topic)
             st.rerun()
         else:
             stats = game_service.get_user_statistics(user.id)
@@ -761,6 +858,11 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
     if not current_session:
         st.session_state.active_session_id = None
         st.rerun()
+
+    # Roleta automática do tema executada apenas uma vez no início da rodada
+    if st.session_state.show_topic_roulette and getattr(current_session, "topic", None):
+        render_topic_roulette_animation(current_session.topic)
+        st.session_state.show_topic_roulette = False
 
     # Contagem de turnos do jogador
     user_msgs = [m for m in game_service.get_messages(current_session.id) if m.sender_type == "user"]
