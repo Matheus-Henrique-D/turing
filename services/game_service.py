@@ -32,7 +32,7 @@ class GameService:
     def __init__(self, ai_provider = None):
         self.ai_provider = ai_provider or get_ai_provider()
 
-    def start_new_game(self, user_id: int) -> GameSession:
+    def start_new_game(self, user_id: int, exclude_topics: Optional[list] = None) -> GameSession:
         """Inicia uma nova partida de Teste de Turing para o usuário autenticado."""
         opponent_type = random.choice(["HUMAN", "AI"])
         if opponent_type == "HUMAN":
@@ -40,7 +40,11 @@ class GameService:
         else:
             persona = random.choice(AI_PERSONAS)
 
-        topic = random.choice(ROUND_TOPICS)
+        # Seleciona tema que não esteja na lista de exclusão
+        available_topics = [t for t in ROUND_TOPICS if t not in (exclude_topics or [])]
+        if not available_topics:
+            available_topics = ROUND_TOPICS
+        topic = random.choice(available_topics)
 
         session = SessionRepository.create(
             user_id=user_id,
