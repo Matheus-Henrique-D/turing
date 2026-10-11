@@ -674,35 +674,57 @@ def render_timer_hud(elapsed: float, limit: float):
 
 def render_topic_roulette_animation(selected_topic: str):
     """
-    Executa a animação automática estilo slot machine / roleta arcade neon
-    sorteando o tema no início da rodada.
+    Animação automática estilo slot machine retro-arcade com desaceleração ease-out.
+    Gira rápido → desacelera gradualmente → trava no tema com efeito neon.
     """
     import random
     from core.config import ROUND_TOPICS
 
     placeholder = st.empty()
     other_topics = [t for t in ROUND_TOPICS if t != selected_topic]
-    sample_pool = random.sample(other_topics, min(8, len(other_topics)))
 
-    # Passos da animação da roleta girando
-    for idx, candidate in enumerate(sample_pool):
+    # Gera sequência de frames com desaceleração realista (ease-out)
+    # 18 frames: rápido no início (0.06s), vai desacelerando até 0.35s por frame
+    frame_delays = (
+        [0.06] * 5   +  # burst inicial (muito rápido)
+        [0.10] * 4   +  # desacelerando suave
+        [0.16] * 3   +  # mais lento
+        [0.24] * 3   +  # quase parando
+        [0.33] * 2   +  # último suspiro
+        [0.42]           # frame de "quase" antes do lock
+    )
+
+    sample_pool = random.choices(other_topics, k=len(frame_delays))
+
+    # Animação girando com velocidade decrescente
+    for idx, (candidate, delay) in enumerate(zip(sample_pool, frame_delays)):
+        # Nos últimos 3 frames muda o header para criar suspense
+        if idx >= len(frame_delays) - 3:
+            header_text = "🎰 QUASE LÁ... 🎰"
+        elif idx >= len(frame_delays) - 6:
+            header_text = "🎰 SORTEANDO... 🎰"
+        else:
+            header_text = "🎰 SORTEANDO TEMA DA RODADA... 🎰"
+
         placeholder.markdown(f"""
         <div class="roulette-container">
-            <div class="roulette-header">🎰 SORTEANDO TEMA DA RODADA... 🎰</div>
+            <div class="roulette-header">{header_text}</div>
             <div class="roulette-slot roulette-spinning">{candidate}</div>
         </div>
         """, unsafe_allow_html=True)
-        time.sleep(0.08 + (idx * 0.015))
+        time.sleep(delay)
 
-    # Fixação final no tema selecionado com efeito neon locked
+    # Exibe o tema final com efeito neon locked por 2.5 segundos
     placeholder.markdown(f"""
     <div class="roulette-container">
         <div class="roulette-header">✨ TEMA DEFINIDO PARA ESTA RODADA! ✨</div>
         <div class="roulette-slot roulette-selected">{selected_topic}</div>
     </div>
     """, unsafe_allow_html=True)
-    time.sleep(0.9)
+    time.sleep(2.5)
     placeholder.empty()
+
+
 
 
 
