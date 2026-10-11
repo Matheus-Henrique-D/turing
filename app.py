@@ -721,8 +721,8 @@ with st.sidebar:
     else:
         provider_name = os.getenv("TURING_AI_PROVIDER", "auto").lower()
         provider_label = {
+            "lmstudio": "LM Studio Local",
             "ollama": "Ollama Local (Llama 3.2)",
-            "bert": "BERTimbau Base",
             "mock": "Modo Heurístico Offline",
             "auto": "Ollama / Auto",
         }.get(provider_name, provider_name.title())
@@ -744,10 +744,8 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
             st.session_state.turn_start_time = time.time()
             st.session_state.turn_index_at_start = 0
             st.session_state.timer_expired_handled = False
-            # Limite por tipo de oponente: 40-50s para HUMAN, 30s para AI
-            st.session_state.turn_limit_seconds = (
-                random.randint(40, 50) if new_session.opponent_type == "HUMAN" else 30
-            )
+            # Timer fixo de 45 segundos por turno
+            st.session_state.turn_limit_seconds = 45
             st.rerun()
         else:
             stats = game_service.get_user_statistics(user.id)
@@ -819,11 +817,7 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
                 st.session_state.turn_start_time = time.time()
                 st.session_state.turn_index_at_start = turn_count
                 st.session_state.timer_expired_handled = False
-                st.session_state.turn_limit_seconds = (
-                    random.randint(40, 50)
-                    if current_session.opponent_type == "HUMAN"
-                    else 30
-                )
+                st.session_state.turn_limit_seconds = 45
 
             elapsed = time.time() - (st.session_state.turn_start_time or time.time())
             limit = st.session_state.turn_limit_seconds

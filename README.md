@@ -54,14 +54,23 @@ Acesse no seu navegador: `http://localhost:8501`.
 
 ### Selecionar o provider de IA
 
-O padrão continua sendo o Ollama. Para testar o BERTimbau como provider opcional:
+O sistema detecta automaticamente o **LM Studio** na porta `1234` (com modelos como Hermes 3 / Llama 3.2). Se o LM Studio estiver fechado, faz fallback automático para **Ollama** ou para o **Mock Offline**.
+
+Para forçar um provider específico via variável de ambiente:
 
 ```powershell
-$env:TURING_AI_PROVIDER = "bertimbau"
+# Usar LM Studio
+$env:TURING_AI_PROVIDER = "lmstudio"
+streamlit run app.py
+
+# Usar Ollama
+$env:TURING_AI_PROVIDER = "ollama"
+streamlit run app.py
+
+# Usar Modo Mock Heurístico 100% Offline
+$env:TURING_AI_PROVIDER = "mock"
 streamlit run app.py
 ```
-
-O BERTimbau é um modelo de preenchimento de máscara, então ele gera respostas curtas assistidas por contexto e não substitui um modelo conversacional. O provider carrega os pesos sob demanda e usa o mock offline automaticamente quando `torch`, os pesos locais ou o download do modelo não estão disponíveis. Para voltar ao Ollama, remova a variável ou use `$env:TURING_AI_PROVIDER = "ollama"`.
 
 ### 2. Interface Terminal (CLI) 💻
 ```bash

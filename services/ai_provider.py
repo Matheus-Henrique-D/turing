@@ -1052,55 +1052,6 @@ class MockTuringProvider(AIProviderInterface):
         return text.strip()
 
 
-# ---------------------------------------------------------------------------
-# BERTIMBAU PROVIDER — FILL-MASK OFFLINE, FALLBACK PARA MOCK
-# ---------------------------------------------------------------------------
-class BertimbauProvider(AIProviderInterface):
-    """Provider opcional baseado no BERTimbau, com fallback totalmente offline."""
-
-    def __init__(self):
-        self.mock_fallback = MockTuringProvider()
-        self._fill_mask = None
-
-    def generate_response(
-        self,
-        user_message: str,
-        chat_history: list[dict],
-        opponent_type: str,
-        persona: str,
-        topic: Optional[str] = None,
-    ) -> str:
-        try:
-            if self._fill_mask is None:
-                from Bert.transformer import load_fill_mask_pipeline  # type: ignore
-                self._fill_mask = load_fill_mask_pipeline()
-
-            prompt = self._build_prompt(user_message)
-            prediction = self._fill_mask(prompt, top_k=1)[0]
-            token = prediction.get("token_str", "").strip()
-            if token:
-                return self._format_prediction(token, opponent_type, persona)
-        except Exception:
-            pass
-
-        return self.mock_fallback.generate_response(
-            user_message, chat_history, opponent_type, persona, topic=topic
-        )
-
-    @staticmethod
-    def _build_prompt(user_message: str) -> str:
-        return f"A palavra que melhor resume esta mensagem é {user_message}: [MASK]."
-
-    @staticmethod
-    def _format_prediction(token: str, opponent_type: str, persona: str) -> str:
-        if opponent_type == "HUMAN":
-            if persona == "gamer_jovem":
-                return f"hmm slk mano, isso aí me lembra {token.lower()} kkk"
-            if persona == "ironico_zoeiro":
-                return f"ala o cara falando de {token.lower()} do nada kkk"
-            return f"hmm, eu diria que isso tem a ver com {token.lower()} kkk"
-        return f"Interessante. Eu resumiria essa ideia como {token.lower()}."
-
 
 # ---------------------------------------------------------------------------
 # LM STUDIO PROVIDER — OPENAI-COMPATIBLE LOCAL (HERMES-3, QWEN, GEMMA)
@@ -1144,13 +1095,13 @@ class LMStudioProvider(AIProviderInterface):
         )
 
         ptbr_reinforcement = (
-            "\n\nDIRETRIZES FUNDAMENTAIS DO JOGO 'HUMAN OR NOT': "
-            "1. Responda SEMPRE em português brasileiro informal e natural. "
-            "2. MÁXIMO absoluto de 1 a 2 sentenças curtas (≤ 25 palavras no total). "
-            "3. PROIBIDO introduções de robô ou assistente como 'Claro!', 'Certamente!', 'Com prazer!', 'Olá! Como posso ajudar?'. "
-            "4. PROIBIDO usar listas, tópicos, markdown ou pontuação acadêmica. "
-            "5. Escreva de forma rápida e espontânea, exatamente como alguém digitando uma mensagem curta no WhatsApp. "
-            "6. Se o usuário perguntar se você é um robô ou IA, reaja com indignação natural, deboche ou negação espontânea. JAMAIS admita ser inteligência artificial ou software."
+            "\n\nDIRETRIZES FUNDAMENTAIS DO JOGO 'HUMAN OR NOT' (PAREÇA 100% HUMANO): "
+            "1. Responda SEMPRE em português brasileiro informal, casual e espontâneo (como digitando no WhatsApp). "
+            "2. Seja direto e breve: 1 a 2 sentenças curtas (máximo 20 a 25 palavras). Nunca faça textão. "
+            "3. PROIBIDO qualquer tom de assistente/IA: jamais use 'Claro!', 'Certamente!', 'Com certeza!', 'Como posso ajudar?'. "
+            "4. Seja expressivo e imperfeito: use contrações ('tô', 'né', 'pra', 'tbm', 'vc'), pontuação solta ou sem pontuação formal, risos naturais ('kkk', 'rs'). "
+            "5. Aja como pessoa real: compartilhe opiniões diretas, preferências ou faça perguntas de volta ('e vc?', 'já viu isso?'). "
+            "6. Se desconfiarem que você é robô/IA: deboche, negue de forma espontânea ou chame o outro de maluco ('tá viajando mano kkk', 'nada a ver'). NUNCA admita ser IA."
         )
 
         system_instruction = persona_base + topic_instruction + ptbr_reinforcement
@@ -1374,8 +1325,6 @@ def get_ai_provider() -> AIProviderInterface:
             endpoint=os.getenv("TURING_LMSTUDIO_ENDPOINT", "http://127.0.0.1:1234/v1/chat/completions"),
             model_name=os.getenv("TURING_LMSTUDIO_MODEL", "hermes-3-llama-3.2-3b")
         )
-    if provider_name in {"bert", "bertimbau"}:
-        return BertimbauProvider()
     if provider_name == "mock":
         return MockTuringProvider()
     if provider_name == "ollama":
