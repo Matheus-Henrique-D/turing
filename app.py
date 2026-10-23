@@ -976,15 +976,20 @@ with st.sidebar:
     st.markdown("---")
     st.caption("🧠 **Provedor de Inteligência Artificial**")
     lm_studio_online = False
+    active_model_name = ""
     try:
         import requests  # noqa: PLC0415
-        r = requests.get("http://127.0.0.1:1234/v1/models", timeout=0.5)
-        lm_studio_online = (r.status_code == 200)
+        r = requests.get("http://127.0.0.1:1234/v1/models", timeout=0.6)
+        if r.status_code == 200:
+            lm_studio_online = True
+            m_list = r.json().get("data", [])
+            llms = [m["id"] for m in m_list if not any(e in m.get("id", "").lower() for e in ["embed", "embedding", "nomic", "bge"])]
+            active_model_name = llms[0] if llms else (m_list[0]["id"] if m_list else "LM Studio")
     except Exception:
         pass
 
     if lm_studio_online:
-        st.success("🟢 **LM Studio Conectado**\nPorta 1234 (Hermes 3 / Llama 3.2)")
+        st.success(f"🟢 **LM Studio Conectado**\n`{active_model_name}`")
     else:
         provider_name = os.getenv("TURING_AI_PROVIDER", "auto").lower()
         provider_label = {
@@ -1184,6 +1189,19 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
         </div>
         """, unsafe_allow_html=True)
 
+    # Dica Secreta no Modo Multijogador (para 1 dos humanos fingir ser IA)
+    if is_multiplayer and getattr(current_session, "pretend_ai_user_id", None) == user.id:
+        st.markdown("""
+        <div style="background: rgba(255, 0, 127, 0.12); border: 1px solid var(--neon-magenta); border-left: 5px solid var(--neon-magenta); padding: 12px 18px; border-radius: 4px; margin-bottom: 16px; box-shadow: 0 0 12px rgba(255, 0, 127, 0.2);">
+            <div style="font-size: 0.78rem; color: var(--neon-magenta); text-transform: uppercase; letter-spacing: 0.12em; font-weight: 800; font-family: var(--font-pixel);">
+                🎭 MISSÃO SECRETA: FINJA SER UMA INTELIGÊNCIA ARTIFICIAL!
+            </div>
+            <div style="color: #ffffff; font-size: 0.93rem; margin-top: 4px; line-height: 1.45;">
+                Você foi pareado com outro <b>humano real</b>! Seu objetivo secreto é enganá-lo: responda de forma polida, sem gírias, com raciocínio analítico ou simulando uma IA para que ele vote que você é um robô ao final da partida.
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
     # Header da partida (Turnos + Botão de Handoff)
     progress_ratio = min(my_turn_count / MAX_TURNS_PER_GAME, 1.0)
     col_bar, col_tag, col_hand = st.columns([3, 1, 1])
@@ -1242,31 +1260,81 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
                 render_timer_hud(elapsed, limit)
 
                 # Expiração do timer: envia mensagem automática "..."
+                timed_out = False
                 if elapsed >= limit and not st.session_state.timer_expired_handled:
                     st.session_state.timer_expired_handled = True
                     st.warning("⏰ Tempo esgotado! Turno enviado automaticamente.")
-                    game_service.send_user_message(current_session.id, user.username, "...")
-                    st.rerun()
+                    timed_out = True
 
                 # Caixa de entrada do jogador
                 user_input = st.chat_input("Digite sua mensagem para o interlocutor misterioso...")
+                if timed_out and not user_input:
+                    user_input = "..."
+
                 if user_input:
-                    typing_placeholder = st.empty()
-                    with typing_placeholder:
-                        render_typing_indicator()
+                    if is_multiplayer:
+                        game_service.send_user_message(
+                            current_session.id,
+                            user.username,
+                            user_input,
+                        )
+                        st.session_state.turn_start_time = time.time()
+                        st.session_state.timer_expired_handled = False
+                        st.rerun()
+                    else:
+                        # Singleplayer contra IA: Salva e renderiza mensagem do usuário instantaneamente
+                        from models.message import MessageRepository
+                        MessageRepository.create(
+                            session_id=current_session.id,
+                            sender_type="user",
+                            sender_name=user.username,
+                            content=user_input
+                        )
+                        render_chat_bubble(user_input, role="user")
 
-                    reply, next_status = game_service.send_user_message(
-                        current_session.id,
-                        user.username,
-                        user_input,
-                    )
+                        # Delay humanizado de 20 a 25 segundos (lendo e digitando no chat)
+                        target_delay = random.uniform(20.0, 25.0)
+                        start_wait = time.time()
 
-                    if reply and not is_multiplayer:
-                        delay = len(reply) * 0.035 + random.uniform(0.3, 0.8)
-                        time.sleep(min(delay, 3.2))
+                        # Gera a resposta do oponente (usando modelo local com gírias e erros naturais)
+                        all_msgs = MessageRepository.list_by_session(current_session.id)
+                        history_payload = [{"role": m.sender_type, "content": m.content} for m in all_msgs]
+                        reply_text = game_service.ai_provider.generate_response(
+                            user_message=user_input,
+                            chat_history=history_payload,
+                            opponent_type=current_session.opponent_type,
+                            persona=current_session.persona,
+                            topic=current_session.topic
+                        )
 
-                    typing_placeholder.empty()
-                    st.rerun()
+                        # Exibe indicador de digitação pulsante durante a simulação humana de 20-25s
+                        typing_placeholder = st.empty()
+                        while True:
+                            elapsed_wait = time.time() - start_wait
+                            if elapsed_wait >= target_delay:
+                                break
+                            with typing_placeholder:
+                                render_typing_indicator()
+                            time.sleep(0.5)
+                        typing_placeholder.empty()
+
+                        # Salva resposta do interlocutor
+                        sender_tag = "simulated_human" if current_session.opponent_type == "HUMAN" else "ai"
+                        MessageRepository.create(
+                            session_id=current_session.id,
+                            sender_type=sender_tag,
+                            sender_name="Interlocutor",
+                            content=reply_text
+                        )
+
+                        # Verifica limite de turnos
+                        user_turn_msgs = [m for m in MessageRepository.list_by_session(current_session.id) if m.sender_name == user.username]
+                        if len(user_turn_msgs) >= MAX_TURNS_PER_GAME:
+                            SessionRepository.update_status(current_session.id, STATUS_VOTING)
+
+                        st.session_state.turn_start_time = time.time()
+                        st.session_state.timer_expired_handled = False
+                        st.rerun()
             else:
                 # Oponente está digitando (esperando resposta no Multijogador)
                 st.markdown("""
@@ -1368,9 +1436,35 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
             </div>
             """, unsafe_allow_html=True)
 
-        # Revelação da identidade real no caso Multijogador
+        # Revelação da identidade real e missão secreta no caso Multijogador
         if is_multiplayer and peer_user:
             peer_guess_str = "🤖 Inteligência Artificial" if peer_guess == "AI" else "👤 Humano"
+            pretend_id = getattr(current_session, "pretend_ai_user_id", None)
+            pretend_msg = ""
+            if pretend_id:
+                pretend_u = UserRepository.get_by_id(pretend_id)
+                if pretend_u:
+                    if pretend_u.id == user.id:
+                        pretend_success = (peer_guess == "AI")
+                        status_badge = "🏆 Sucesso! O outro jogador achou que você era uma IA!" if pretend_success else "😅 Quase! O outro jogador descobriu que você era humano."
+                        pretend_msg = f"""
+                        <div style="margin-top: 12px; padding: 10px 14px; background: rgba(255, 0, 127, 0.12); border-left: 4px solid var(--neon-magenta); border-radius: 4px;">
+                            <div style="color: var(--neon-magenta); font-weight: 700; font-family: var(--font-pixel); font-size: 0.85rem;">SUA MISSÃO SECRETA DE SE FINGIR DE IA:</div>
+                            <div style="color: #ffffff; font-size: 0.95rem; margin-top: 2px;">{status_badge}</div>
+                        </div>
+                        """
+                    else:
+                        fooled = (my_guess == "AI")
+                        status_badge = f"🎭 O jogador <b>@{pretend_u.username}</b> recebeu a missão de se fingir de IA! " + (
+                            "Você caiu no disfarce e votou que ele era IA!" if fooled else "Você não caiu no disfarce e acertou que ele era humano!"
+                        )
+                        pretend_msg = f"""
+                        <div style="margin-top: 12px; padding: 10px 14px; background: rgba(0, 255, 85, 0.1); border-left: 4px solid var(--neon-green); border-radius: 4px;">
+                            <div style="color: var(--neon-green); font-weight: 700; font-family: var(--font-pixel); font-size: 0.85rem;">MISSÃO SECRETA DO OPONENTE:</div>
+                            <div style="color: #ffffff; font-size: 0.95rem; margin-top: 2px;">{status_badge}</div>
+                        </div>
+                        """
+
             st.markdown(f"""
             <div style="background: rgba(0, 255, 85, 0.05); border: 1px solid var(--neon-green-dim); padding: 18px 22px; border-radius: 4px; margin-top: 18px;">
                 <div style="font-family: var(--font-pixel); font-size: 1.5rem; color: var(--neon-green); margin-bottom: 6px;">REVELAÇÃO DO OPONENTE REAL</div>
@@ -1380,6 +1474,7 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
                 <div style="font-size: 0.95rem; color: var(--muted); margin-top: 6px;">
                     E o outro jogador votou que você era: <b style="color:var(--neon-green);">{peer_guess_str}</b>!
                 </div>
+                {pretend_msg}
             </div>
             """, unsafe_allow_html=True)
 

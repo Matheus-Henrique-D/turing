@@ -33,6 +33,7 @@ class GameSession:
     player2_guess: Optional[str] = None
     player2_is_win: Optional[bool] = None
     is_multiplayer: bool = False
+    pretend_ai_user_id: Optional[int] = None
 
     @classmethod
     def from_row(cls, row) -> "GameSession":
@@ -42,6 +43,7 @@ class GameSession:
         p2_guess = row["player2_guess"] if "player2_guess" in keys else None
         p2_win = bool(row["player2_is_win"]) if "player2_is_win" in keys and row["player2_is_win"] is not None else None
         is_mp = bool(row["is_multiplayer"]) if "is_multiplayer" in keys and row["is_multiplayer"] is not None else False
+        pretend_id = row["pretend_ai_user_id"] if "pretend_ai_user_id" in keys else None
 
         return cls(
             id=row["id"],
@@ -58,7 +60,8 @@ class GameSession:
             player2_id=p2_id,
             player2_guess=p2_guess,
             player2_is_win=p2_win,
-            is_multiplayer=is_mp
+            is_multiplayer=is_mp,
+            pretend_ai_user_id=pretend_id
         )
 
 class SessionRepository:
@@ -69,15 +72,16 @@ class SessionRepository:
         persona: str,
         topic: Optional[str] = None,
         player2_id: Optional[int] = None,
-        is_multiplayer: bool = False
+        is_multiplayer: bool = False,
+        pretend_ai_user_id: Optional[int] = None
     ) -> GameSession:
         session_id = str(uuid.uuid4())
         now = datetime.now().isoformat()
         with get_db_connection() as conn:
             conn.execute("""
-            INSERT INTO game_sessions (id, user_id, opponent_type, persona, topic, status, created_at, player2_id, is_multiplayer)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (session_id, user_id, opponent_type, persona, topic, STATUS_ACTIVE, now, player2_id, 1 if is_multiplayer else 0))
+            INSERT INTO game_sessions (id, user_id, opponent_type, persona, topic, status, created_at, player2_id, is_multiplayer, pretend_ai_user_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (session_id, user_id, opponent_type, persona, topic, STATUS_ACTIVE, now, player2_id, 1 if is_multiplayer else 0, pretend_ai_user_id))
         return SessionRepository.get_by_id(session_id)
 
     @staticmethod

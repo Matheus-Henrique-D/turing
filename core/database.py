@@ -73,7 +73,8 @@ def init_db():
             "player2_id INTEGER NULL",
             "player2_guess TEXT NULL",
             "player2_is_win INTEGER NULL",
-            "is_multiplayer INTEGER DEFAULT 0"
+            "is_multiplayer INTEGER DEFAULT 0",
+            "pretend_ai_user_id INTEGER NULL"
         ]:
             try:
                 cursor.execute(f"ALTER TABLE game_sessions ADD COLUMN {col_def};")

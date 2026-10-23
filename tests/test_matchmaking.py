@@ -50,6 +50,7 @@ class TestMatchmaking(unittest.TestCase):
         self.assertEqual(session.opponent_type, "HUMAN")
         self.assertEqual(session.user_id, 202)
         self.assertEqual(session.player2_id, 201)
+        self.assertIn(session.pretend_ai_user_id, [201, 202])
 
     def test_leave_queue(self):
         MatchmakingService.join_queue(user_id=203, username="player_gamma")

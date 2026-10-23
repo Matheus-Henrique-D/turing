@@ -78,12 +78,13 @@ class MatchmakingService:
                     available_topics = ROUND_TOPICS
                 selected_topic = random.choice(available_topics)
                 session_id = str(uuid.uuid4())
+                pretend_ai_user_id = random.choice([user_id, peer["user_id"]])
 
-                # Insere sessão multijogador
+                # Insere sessão multijogador com missão secreta sorteada para 1 dos humanos
                 conn.execute("""
-                INSERT INTO game_sessions (id, user_id, opponent_type, persona, topic, status, created_at, player2_id, is_multiplayer)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (session_id, user_id, "HUMAN", "jogador_real", selected_topic, STATUS_ACTIVE, now, peer["user_id"], 1))
+                INSERT INTO game_sessions (id, user_id, opponent_type, persona, topic, status, created_at, player2_id, is_multiplayer, pretend_ai_user_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (session_id, user_id, "HUMAN", "jogador_real", selected_topic, STATUS_ACTIVE, now, peer["user_id"], 1, pretend_ai_user_id))
 
                 # Atualiza ambos para 'matched'
                 conn.execute("""
@@ -165,11 +166,12 @@ class MatchmakingService:
                         available_topics = ROUND_TOPICS
                     selected_topic = random.choice(available_topics)
                     session_id = str(uuid.uuid4())
+                    pretend_ai_user_id = random.choice([user_id, peer["user_id"]])
 
                     conn.execute("""
-                    INSERT INTO game_sessions (id, user_id, opponent_type, persona, topic, status, created_at, player2_id, is_multiplayer)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (session_id, user_id, "HUMAN", "jogador_real", selected_topic, STATUS_ACTIVE, now, peer["user_id"], 1))
+                    INSERT INTO game_sessions (id, user_id, opponent_type, persona, topic, status, created_at, player2_id, is_multiplayer, pretend_ai_user_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (session_id, user_id, "HUMAN", "jogador_real", selected_topic, STATUS_ACTIVE, now, peer["user_id"], 1, pretend_ai_user_id))
 
                     conn.execute("""
                     UPDATE matchmaking_queue

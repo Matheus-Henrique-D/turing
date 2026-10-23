@@ -1108,15 +1108,15 @@ class LMStudioProvider(AIProviderInterface):
         rules = (
             "\n\nREGRAS ABSOLUTAS (não quebre nenhuma):\n"
             "• Responda em 1 a 2 frases CURTÍSSIMAS. Máximo 18 palavras.\n"
-            "• Escreva TUDO em letras minúsculas (só maiúscula em nomes próprios e início raramente).\n"
-            "• SEM pontuação formal no final de frases. Sem ponto final na maioria das respostas.\n"
-            "• Erros de digitação NATURAIS ocasionais: 'q' em vez de 'que', 'vc' em vez de 'você', "
-            "'tbm' em vez de 'também', 'msm' em vez de 'mesmo', 'pq' em vez de 'porque'.\n"
-            "• DISCORDE às vezes: se o usuário afirmar algo, é natural não concordar sempre.\n"
-            "• Às vezes mande APENAS 2-4 palavras: 'pô nem sei', 'serio kkk', 'demais', 'hm depende'.\n"
-            "• JAMAIS seja solícito, prestativo ou estruturado como assistente.\n"
-            "• Se perguntarem se é IA/robô: negue com naturalidade ('mentira kkkk', 'q isso', 'to aqui no cel').\n"
-            "• NUNCA use: 'Claro!', 'Certamente!', 'Ótima pergunta!', 'Com prazer!', listas, markdown."
+            "• Escreva SEMPRE em minúsculas (nunca comece com maiúscula e evite pontuação formal).\n"
+            "• ZERO polidez: NUNCA use frases educadas de assistente como 'Olá', 'Com certeza', 'Entendo seu ponto', 'Boa pergunta'.\n"
+            "• Estilo WhatsApp/Discord: use abreviações naturais brasileiras: 'q', 'vc', 'tbm', 'pq', 'blz', 'oq', 'agr', 'dms'.\n"
+            "• SEM ponto final no fim das frases. Ponto final soa artificial e sério demais.\n"
+            "• Erros e informalidade: pessoas reais digitam rápido, erram acentos e usam gírias ('kkk', 'mano', 'pô', 'vei', 'slk').\n"
+            "• DISCORDE às vezes: não concorde com tudo que o usuário falar.\n"
+            "• Às vezes mande APENAS 2 a 4 palavras: 'pô nem sei', 'serio kkk', 'nada a ver', 'hm depende', 'sei la mano'.\n"
+            "• Se perguntarem se é IA/robô: negue com deboche ou zoeira ('ala o cara achando q sou bot kkk', 'q isso mano to no celular').\n"
+            "• NUNCA use listas, marcadores, aspas ou markdown."
         )
 
         return persona_base + topic_ctx + few_shot + rules
@@ -1172,7 +1172,7 @@ class LMStudioProvider(AIProviderInterface):
                 "messages": messages,
                 "temperature": 0.92,
                 "top_p": 0.92,
-                "max_tokens": 60,
+                "max_tokens": 45,
                 "repetition_penalty": 1.1,
                 "stream": False,
             }
@@ -1196,48 +1196,88 @@ class LMStudioProvider(AIProviderInterface):
         )
 
     def _apply_natural_typos(self, text: str, persona: str) -> str:
-        """Aplica erros de digitação naturais e estilo WhatsApp brasileiro."""
+        """Aplica erros de digitação realistas, omissão de acentos e gírias do chat brasileiro."""
         if not text:
             return text
 
-        # Contrações naturais do WhatsApp br
-        replacements = [
-            ("que ", "q ", 0.55),
-            ("você", "vc", 0.70),
-            ("também", "tbm", 0.65),
-            ("mesmo", "msm", 0.50),
-            ("porque", "pq", 0.60),
-            ("então", "aí", 0.30),
-            ("está", "tá", 0.55),
-            ("estou", "tô", 0.60),
-            ("não ", "n ", 0.20),      # só 20%: "n sei"
-            ("para ", "pra ", 0.65),
-            ("mais", "mais", 0.0),      # não substitui 'mais'
-        ]
         import random as _r
+
+        # 1. Gírias e contrações comuns de WhatsApp / chat informal
+        replacements = [
+            ("você", "vc", 0.85),
+            ("voce", "vc", 0.85),
+            ("que ", "q ", 0.75),
+            ("também", "tbm", 0.80),
+            ("tambem", "tbm", 0.80),
+            ("mesmo", "msm", 0.70),
+            ("porque", "pq", 0.85),
+            ("por que", "pq", 0.85),
+            ("o que ", "oq ", 0.70),
+            ("o que", "oq", 0.65),
+            ("está ", "tá ", 0.80),
+            ("esta ", "ta ", 0.80),
+            ("estou", "to", 0.75),
+            ("para ", "pra ", 0.85),
+            ("beleza", "blz", 0.70),
+            ("demais", "dms", 0.65),
+            ("agora", "agr", 0.65),
+            ("muito", "mt", 0.50),
+            ("com certeza", "com ctz", 0.60),
+            ("não ", "nao ", 0.75),
+            ("não,", "nao,", 0.75),
+            ("já ", "ja ", 0.70),
+            ("está", "ta", 0.70),
+        ]
         for original, contracted, prob in replacements:
             if _r.random() < prob:
                 text = text.replace(original, contracted)
 
-        # Remover ponto final em 70% das vezes
-        if text.endswith(".") and _r.random() < 0.70:
-            text = text[:-1]
+        # 2. Remover acentos naturalmente (digitação rápida) em 50% dos casos
+        if _r.random() < 0.60:
+            accent_map = {
+                "ã": "a", "á": "a", "à": "a", "â": "a",
+                "é": "e", "ê": "e",
+                "í": "i",
+                "ó": "o", "õ": "o", "ô": "o",
+                "ú": "u", "ç": "c",
+            }
+            chars = list(text)
+            for i, c in enumerate(chars):
+                if c in accent_map and _r.random() < 0.75:
+                    chars[i] = accent_map[c]
+            text = "".join(chars)
 
-        # Minúsculas no início em personas casuais
-        if persona in {"gamer_jovem", "ironico_zoeiro", "casual_gente_boa", "ia_camuflada", "ia_ironica"}:
-            if text and _r.random() < 0.65:
+        # 3. Remover ponto final em 90% das vezes (pessoas no chat não usam ponto final)
+        if text.endswith("."):
+            if _r.random() < 0.90:
+                text = text[:-1]
+
+        # 4. Minúsculas no início da frase para todas as personas informais
+        if persona in {"gamer_jovem", "ironico_zoeiro", "casual_gente_boa", "estudante_neutro", "ia_camuflada", "ia_ironica"}:
+            if text and _r.random() < 0.90:
                 text = text[0].lower() + text[1:]
 
-        # Erros aleatórios leves (letra trocada/faltando) em 15% dos casos
-        if _r.random() < 0.15 and len(text) > 10:
-            idx = _r.randint(3, len(text) - 3)
-            char = text[idx]
+        # 5. Erros de tecla adjacente ou letra faltando/duplicada (35% de chance)
+        if _r.random() < 0.35 and len(text) > 8:
+            idx = _r.randint(2, len(text) - 2)
+            char = text[idx].lower()
             if char.isalpha():
-                adjacents = {"a": "s", "e": "r", "i": "u", "o": "p", "u": "i",
-                             "s": "a", "r": "e", "n": "m", "m": "n", "t": "r"}
-                text = text[:idx] + adjacents.get(char.lower(), char) + text[idx+1:]
+                adjacents = {
+                    "a": "s", "s": "a", "d": "f", "f": "d",
+                    "e": "r", "r": "e", "t": "r", "y": "t",
+                    "u": "i", "i": "u", "o": "p", "p": "o",
+                    "n": "m", "m": "n", "c": "v", "v": "c",
+                    "k": "l", "l": "k",
+                }
+                sub_type = _r.random()
+                if sub_type < 0.60 and char in adjacents:
+                    # Troca por tecla adjacente
+                    text = text[:idx] + adjacents[char] + text[idx+1:]
+                elif sub_type < 0.85:
+                    # Letra duplicada (segurou tecla)
+                    text = text[:idx] + char + text[idx:]
 
-        return text
+        return text.strip()
 
     def _sanitize_agent_reply(self, text: str, opponent_type: str, persona: str) -> str:
         """Limpa clichês de IA, prefixos de roleplay e confissões de ser robô."""
@@ -1454,8 +1494,22 @@ def get_ai_provider() -> AIProviderInterface:
         res = requests.get("http://127.0.0.1:1234/v1/models", timeout=0.8)
         if res.status_code == 200:
             models_data = res.json().get("data", [])
-            # Pega o modelo ativo (primeiro da lista)
-            model_id = models_data[0]["id"] if models_data else None
+            # Prioriza modelos LLM generativos (filtrando modelos de embedding como nomic/bge)
+            llm_models = [
+                m["id"] for m in models_data
+                if not any(e in m.get("id", "").lower() for e in ["embed", "embedding", "nomic", "bge"])
+            ]
+            # Prioriza modelos generativos leves (0.8b, 1b, 2b, 3b, e4b) para fluidez máxima sem travar a CPU/GPU
+            preferred_order = ["0.8b", "1b", "2b", "3b", "e4b", "4b", "7b", "9b"]
+            def _weight(name: str) -> int:
+                nl = name.lower()
+                for idx, tag in enumerate(preferred_order):
+                    if tag in nl:
+                        return idx
+                return 50
+            llm_models.sort(key=_weight)
+
+            model_id = os.getenv("TURING_LMSTUDIO_MODEL") or (llm_models[0] if llm_models else (models_data[0]["id"] if models_data else None))
             return LMStudioProvider(
                 endpoint="http://127.0.0.1:1234/v1/chat/completions",
                 model_name=model_id,
