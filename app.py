@@ -1351,7 +1351,7 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
                         # Exibe a mensagem enviada na hora
                         render_chat_bubble(clean_input, role="user")
 
-                        # Indicador rápido e natural de digitação (1.2s a 1.8s)
+                        # Simula tempo realista de leitura e digitação humana (7 a 11 segundos)
                         typing_placeholder = st.empty()
                         with typing_placeholder:
                             render_typing_indicator()
@@ -1370,7 +1370,7 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
                         except Exception:
                             reply_text = "opa, e aí? tudo certo por aqui"
 
-                        time.sleep(random.uniform(1.2, 1.8))
+                        time.sleep(random.uniform(7.0, 11.0))
                         typing_placeholder.empty()
 
                         # Salva resposta do interlocutor
