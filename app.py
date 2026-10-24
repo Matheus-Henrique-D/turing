@@ -40,6 +40,8 @@ from services.handoff_service import HandoffService
 from services.admin_service import AdminService
 from services.matchmaking_service import MatchmakingService
 from models.user import User, UserRepository
+from models.session import GameSession, SessionRepository
+from models.message import Message, MessageRepository
 
 # Inicializa o banco de dados e sementes padrão
 init_db()
@@ -49,7 +51,7 @@ st.set_page_config(
     page_title="Human or Not? — Teste de Turing",
     page_icon="🤖",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
 )
 
 # ==============================================================================
@@ -944,75 +946,122 @@ if not current_user:
     st.stop()
 
 # ==============================================================================
-# MENU LATERAL (SIDEBAR)
+# MENU LATERAL (SIDEBAR) & NAVEGAÇÃO
 # ==============================================================================
 user: User = current_user
-role_class = f"badge-{getattr(user, 'role', 'usuario')}"
 
-with st.sidebar:
-    st.markdown(f"### Olá, **{user.full_name}**")
-    st.markdown(
-        f"Perfil: <span class='badge-role {role_class}'>{user.role}</span>",
-        unsafe_allow_html=True,
-    )
-    st.write(f"Identificador: `{user.username}`")
+# Remove completamente a lateral esquerda da UI para Jogador 1, Jogador 2 e qualquer perfil 'usuario'
+if user.role == ROLE_USUARIO:
+    st.markdown("""
+    <style>
+    [data-testid="stSidebar"],
+    section[data-testid="stSidebar"],
+    [data-testid="stSidebarCollapsedControl"],
+    [data-testid="collapsedControl"],
+    div[data-testid="stSidebarContent"],
+    button[kind="header"] {
+        display: none !important;
+        visibility: hidden !important;
+        width: 0px !important;
+    }
+    .main .block-container {
+        max-width: 960px !important;
+        margin: 0 auto !important;
+        padding-top: 1.5rem !important;
+        padding-left: 1.5rem !important;
+        padding-right: 1.5rem !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    selected_view = "🎮 Jogar (Teste de Turing)"
+else:
+    # Operador ou Administrador: Mantém o menu lateral para alternar entre as visões
+    role_class = f"badge-{getattr(user, 'role', 'usuario')}"
+    with st.sidebar:
+        st.markdown(f"### Olá, **{user.full_name}**")
+        st.markdown(
+            f"Perfil: <span class='badge-role {role_class}'>{user.role}</span>",
+            unsafe_allow_html=True,
+        )
+        st.write(f"Identificador: `{user.username}`")
 
-    if st.button("🚪 Sair (Logout)", use_container_width=True):
-        st.session_state.current_user = None
-        st.session_state.active_session_id = None
-        st.session_state.turn_start_time = None
-        st.rerun()
+        if st.button("🚪 Sair (Logout)", use_container_width=True):
+            st.session_state.current_user = None
+            st.session_state.active_session_id = None
+            st.session_state.turn_start_time = None
+            st.rerun()
 
-    st.markdown("---")
+        st.markdown("---")
 
-    allowed_views = ["🎮 Jogar (Teste de Turing)"]
-    if user.role in [ROLE_OPERADOR, ROLE_ADMIN]:
-        allowed_views.append("🎧 Painel do Operador (Handoff)")
-    if user.role == ROLE_ADMIN:
-        allowed_views.append("⚙️ Painel de Administração")
+        allowed_views = ["🎮 Jogar (Teste de Turing)"]
+        if user.role in [ROLE_OPERADOR, ROLE_ADMIN]:
+            allowed_views.append("🎧 Painel do Operador (Handoff)")
+        if user.role == ROLE_ADMIN:
+            allowed_views.append("⚙️ Painel de Administração")
 
-    selected_view = st.radio("Módulo de visualização:", allowed_views)
+        selected_view = st.radio("Módulo de visualização:", allowed_views)
 
-    st.markdown("---")
-    st.caption("🧠 **Provedor de Inteligência Artificial**")
+        st.markdown("---")
+        st.caption("🧠 **Provedor de Inteligência Artificial**")
 
-    groq_key = os.getenv("GROQ_API_KEY", "")
-    if not groq_key and hasattr(st, "secrets") and "GROQ_API_KEY" in st.secrets:
-        groq_key = st.secrets["GROQ_API_KEY"]
-    groq_active = bool(groq_key)
-    turing_provider_env = os.getenv("TURING_AI_PROVIDER", "auto").lower()
+        groq_key = os.getenv("GROQ_API_KEY", "")
+        if not groq_key and hasattr(st, "secrets") and "GROQ_API_KEY" in st.secrets:
+            groq_key = st.secrets["GROQ_API_KEY"]
+        groq_active = bool(groq_key)
+        turing_provider_env = os.getenv("TURING_AI_PROVIDER", "auto").lower()
 
-    lm_studio_online = False
-    active_model_name = ""
-    try:
-        import requests  # noqa: PLC0415
-        r = requests.get("http://127.0.0.1:1234/v1/models", timeout=0.6)
-        if r.status_code == 200:
-            lm_studio_online = True
-            m_list = r.json().get("data", [])
-            llms = [m["id"] for m in m_list if not any(e in m.get("id", "").lower() for e in ["embed", "embedding", "nomic", "bge"])]
-            active_model_name = llms[0] if llms else (m_list[0]["id"] if m_list else "LM Studio")
-    except Exception:
-        pass
+        if turing_provider_env == "groq" or (turing_provider_env == "auto" and groq_active):
+            st.success("⚡ **Groq Cloud Ativo**\n`qwen/qwen3.8-27b` (Nuvem 24/7)")
+        else:
+            lm_studio_online = False
+            active_model_name = ""
+            if turing_provider_env in ["lmstudio", "lm_studio"]:
+                try:
+                    import requests  # noqa: PLC0415
+                    r = requests.get("http://127.0.0.1:1234/v1/models", timeout=0.2)
+                    if r.status_code == 200:
+                        lm_studio_online = True
+                        m_list = r.json().get("data", [])
+                        llms = [m["id"] for m in m_list if not any(e in m.get("id", "").lower() for e in ["embed", "embedding", "nomic", "bge"])]
+                        active_model_name = llms[0] if llms else (m_list[0]["id"] if m_list else "LM Studio")
+                except Exception:
+                    pass
 
-    if turing_provider_env == "groq" or (turing_provider_env == "auto" and groq_active):
-        st.success("⚡ **Groq Cloud Ativo**\n`qwen/qwen3.8-27b` (Nuvem 24/7)")
-    elif lm_studio_online:
-        st.success(f"🟢 **LM Studio Conectado**\n`{active_model_name}`")
-    else:
-        provider_label = {
-            "lmstudio": "LM Studio Local",
-            "ollama": "Ollama Local (Llama 3.2)",
-            "mock": "Modo Heurístico Offline",
-            "auto": "Ollama / Auto",
-        }.get(turing_provider_env, turing_provider_env.title())
-        st.info(f"**{provider_label}**\n\nMotor de inferência ativo")
+            if lm_studio_online:
+                st.success(f"🟢 **LM Studio Conectado**\n`{active_model_name}`")
+            else:
+                provider_label = {
+                    "lmstudio": "LM Studio Local",
+                    "ollama": "Ollama Local (Llama 3.2)",
+                    "mock": "Modo Heurístico Offline",
+                    "auto": "Ollama / Auto",
+                }.get(turing_provider_env, turing_provider_env.title())
+                st.info(f"**{provider_label}**\n\nMotor de inferência ativo")
 
 
 # ==============================================================================
 # VISÃO 1: JOGADOR (TESTE DE TURING // 5 TURNOS)
 # ==============================================================================
 if selected_view == "🎮 Jogar (Teste de Turing)":
+    # Barra superior com identificação do jogador e botão de logout (quando a sidebar está oculta)
+    if user.role == ROLE_USUARIO:
+        col_hdr1, col_hdr2 = st.columns([5, 1])
+        with col_hdr1:
+            st.markdown(
+                f"<div style='display:flex; align-items:center; gap:8px; padding-top:4px; font-size:0.95rem; color:var(--muted);'>"
+                f"<span>👤 Jogador:</span> <b style='color:var(--neon-green); font-size:1.05rem;'>{user.full_name}</b> "
+                f"<code style='background:rgba(0,255,85,0.08); color:var(--neon-green); border:1px solid var(--neon-green-dim); padding:2px 8px; border-radius:3px;'>@{user.username}</code>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+        with col_hdr2:
+            if st.button("🚪 Sair", key="player_top_logout", use_container_width=True):
+                st.session_state.current_user = None
+                st.session_state.active_session_id = None
+                st.session_state.turn_start_time = None
+                st.rerun()
+        st.markdown("<div style='border-bottom: 1px solid var(--line); margin-bottom: 18px;'></div>", unsafe_allow_html=True)
+
     st.markdown("<div class='main-header'>HUMAN OR NOT?</div>", unsafe_allow_html=True)
     st.markdown("<p style='color:var(--muted); margin-bottom: 20px;'>Descubra em 5 mensagens se você está conversando com um Humano real ou com uma IA.</p>", unsafe_allow_html=True)
 
@@ -1084,7 +1133,7 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
                 st.rerun()
 
         if _HAS_AUTOREFRESH:
-            st_autorefresh(interval=1000, key="matchmaking_radar_refresh")
+            st_autorefresh(interval=2000, key="matchmaking_radar_refresh")
         st.stop()
 
     # ── ESTADO 2: LOBBY INICIAL (SEM PARTIDA ATIVA) ─────────────────────────────
@@ -1267,63 +1316,61 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
                 # HUD do Timer digital 45s
                 render_timer_hud(elapsed, limit)
 
-                # Expiração do timer: envia mensagem automática "..."
-                timed_out = False
-                if elapsed >= limit and not st.session_state.timer_expired_handled:
-                    st.session_state.timer_expired_handled = True
-                    st.warning("⏰ Tempo esgotado! Turno enviado automaticamente.")
-                    timed_out = True
+                # Alerta visual caso o tempo do turno seja ultrapassado (sem apagar o texto digitado)
+                if elapsed >= limit:
+                    st.caption("⏱️ **Tempo sugerido expirado.** Finalize sua mensagem e pressione Enter para enviar.")
 
-                # Caixa de entrada do jogador
+                # Caixa de entrada do jogador com alta responsividade
                 user_input = st.chat_input("Digite sua mensagem para o interlocutor misterioso...")
-                if timed_out and not user_input:
-                    user_input = "..."
 
-                if user_input:
+                if user_input and user_input.strip():
+                    clean_input = user_input.strip()
+
                     if is_multiplayer:
                         game_service.send_user_message(
                             current_session.id,
                             user.username,
-                            user_input,
+                            clean_input,
                         )
                         st.session_state.turn_start_time = time.time()
                         st.session_state.timer_expired_handled = False
                         st.rerun()
                     else:
-                        # Singleplayer contra IA: Salva e renderiza mensagem do usuário instantaneamente
+                        # Singleplayer contra IA: Salva mensagem do jogador e renderiza imediatamente
                         from models.message import MessageRepository
+                        from models.session import SessionRepository
                         MessageRepository.create(
                             session_id=current_session.id,
                             sender_type="user",
                             sender_name=user.username,
-                            content=user_input
+                            content=clean_input,
                         )
-                        render_chat_bubble(user_input, role="user")
+                        st.session_state.turn_start_time = time.time()
+                        st.session_state.timer_expired_handled = False
 
-                        # Delay humanizado de 20 a 25 segundos (lendo e digitando no chat)
-                        target_delay = random.uniform(20.0, 25.0)
-                        start_wait = time.time()
+                        # Exibe a mensagem enviada na hora
+                        render_chat_bubble(clean_input, role="user")
 
-                        # Gera a resposta do oponente (usando modelo local com gírias e erros naturais)
+                        # Indicador rápido e natural de digitação (1.2s a 1.8s)
+                        typing_placeholder = st.empty()
+                        with typing_placeholder:
+                            render_typing_indicator()
+
+                        # Gera a resposta do oponente
                         all_msgs = MessageRepository.list_by_session(current_session.id)
                         history_payload = [{"role": m.sender_type, "content": m.content} for m in all_msgs]
-                        reply_text = game_service.ai_provider.generate_response(
-                            user_message=user_input,
-                            chat_history=history_payload,
-                            opponent_type=current_session.opponent_type,
-                            persona=current_session.persona,
-                            topic=current_session.topic
-                        )
+                        try:
+                            reply_text = game_service.ai_provider.generate_response(
+                                user_message=clean_input,
+                                chat_history=history_payload,
+                                opponent_type=current_session.opponent_type,
+                                persona=current_session.persona,
+                                topic=current_session.topic,
+                            )
+                        except Exception:
+                            reply_text = "opa, e aí? tudo certo por aqui"
 
-                        # Exibe indicador de digitação pulsante durante a simulação humana de 20-25s
-                        typing_placeholder = st.empty()
-                        while True:
-                            elapsed_wait = time.time() - start_wait
-                            if elapsed_wait >= target_delay:
-                                break
-                            with typing_placeholder:
-                                render_typing_indicator()
-                            time.sleep(0.5)
+                        time.sleep(random.uniform(1.2, 1.8))
                         typing_placeholder.empty()
 
                         # Salva resposta do interlocutor
@@ -1332,7 +1379,7 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
                             session_id=current_session.id,
                             sender_type=sender_tag,
                             sender_name="Interlocutor",
-                            content=reply_text
+                            content=reply_text,
                         )
 
                         # Verifica limite de turnos
@@ -1340,8 +1387,6 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
                         if len(user_turn_msgs) >= MAX_TURNS_PER_GAME:
                             SessionRepository.update_status(current_session.id, STATUS_VOTING)
 
-                        st.session_state.turn_start_time = time.time()
-                        st.session_state.timer_expired_handled = False
                         st.rerun()
             else:
                 # Oponente está digitando (esperando resposta no Multijogador)
@@ -1352,10 +1397,9 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
                 </div>
                 """, unsafe_allow_html=True)
                 render_typing_indicator()
-
-            # Autorefresh periódico para sincronia do timer e do multijogador em tempo real
-            if _HAS_AUTOREFRESH:
-                st_autorefresh(interval=1000, key="chat_sync_refresh")
+                # Autorefresh APENAS quando esperando o oponente — não interfere no input do jogador
+                if _HAS_AUTOREFRESH:
+                    st_autorefresh(interval=2000, key="chat_sync_refresh")
 
         else:
             # 5 turnos finalizados -> avança para a votação
