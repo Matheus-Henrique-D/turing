@@ -133,7 +133,8 @@ def seed_default_users(cursor):
     default_users = [
         ("admin", "Administrador do Sistema", "admin123", ROLE_ADMIN),
         ("operador", "Operador de Atendimento", "operador123", ROLE_OPERADOR),
-        ("jogador1", "Jogador Teste", "jogador123", ROLE_USUARIO)
+        ("jogador1", "Jogador Teste", "jogador123", ROLE_USUARIO),
+        ("jogador2", "Jogador Dois", "jogador123", ROLE_USUARIO)
     ]
     
     now = datetime.now().isoformat()

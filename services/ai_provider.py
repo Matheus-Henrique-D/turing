@@ -1462,6 +1462,85 @@ class OllamaProvider(AIProviderInterface):
         return text.strip('"\'').strip()
 
 
+# ---------------------------------------------------------------------------
+# GROQ PROVIDER — MODELO EM NUVEM ULTRARRÁPIDO E CONVINCENTE (QWEN 27B / LLAMA)
+# ---------------------------------------------------------------------------
+class GroqProvider(AIProviderInterface):
+    """
+    Provedor em Nuvem Groq (API OpenAI-Compatible em https://api.groq.com/openai/v1).
+    Permite rodar a aplicação na nuvem 24/7 sem necessidade de máquina local ligada.
+    Utiliza modelos de alta capacidade (ex: qwen/qwen3.8-27b) com sanitização e erros naturais.
+    """
+
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        model_name: str = "qwen/qwen3.8-27b",
+        endpoint: str = "https://api.groq.com/openai/v1/chat/completions",
+    ):
+        self.api_key = api_key or os.getenv("GROQ_API_KEY", "")
+        self.model_name = os.getenv("TURING_GROQ_MODEL", model_name)
+        self.endpoint = endpoint
+        self.mock_fallback = MockTuringProvider()
+        # Reutiliza o construtor de prompts e aplicador de erros do LMStudioProvider
+        self._helper = LMStudioProvider()
+
+    def generate_response(
+        self,
+        user_message: str,
+        chat_history: list[dict],
+        opponent_type: str,
+        persona: str,
+        topic: Optional[str] = None,
+    ) -> str:
+        import requests  # noqa: PLC0415
+
+        if not self.api_key:
+            return self.mock_fallback.generate_response(
+                user_message, chat_history, opponent_type, persona, topic=topic
+            )
+
+        system_prompt = self._helper._build_system_prompt(persona, opponent_type, topic)
+
+        messages = [{"role": "system", "content": system_prompt}]
+        for msg in chat_history[-6:]:
+            r = "assistant" if msg["role"] in ["ai", "simulated_human", "operator"] else "user"
+            messages.append({"role": r, "content": msg["content"]})
+        if not messages or messages[-1].get("content") != user_message:
+            messages.append({"role": "user", "content": user_message})
+
+        payload = {
+            "model": self.model_name,
+            "messages": messages,
+            "temperature": 0.92,
+            "top_p": 0.90,
+            "max_tokens": 55,
+            "stream": False,
+        }
+
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+
+        try:
+            resp = requests.post(self.endpoint, headers=headers, json=payload, timeout=12)
+            if resp.status_code == 200:
+                data = resp.json()
+                choices = data.get("choices", [])
+                if choices:
+                    raw = choices[0].get("message", {}).get("content", "").strip()
+                    cleaned = self._helper._sanitize_agent_reply(raw, opponent_type, persona)
+                    if cleaned and len(cleaned) > 1:
+                        return cleaned
+        except Exception:
+            pass
+
+        return self.mock_fallback.generate_response(
+            user_message, chat_history, opponent_type, persona, topic=topic
+        )
+
+
 # Alias para compatibilidade retroativa
 OllamaProviderStub = OllamaProvider
 
@@ -1469,10 +1548,27 @@ OllamaProviderStub = OllamaProvider
 
 def get_ai_provider() -> AIProviderInterface:
     """
-    Retorna o provider configurado com detecção inteligente de LM Studio.
-    Suporta API nativa (/api/v1/chat) e OpenAI-compat (/v1/chat/completions).
+    Retorna o provider configurado:
+    1. Se GROQ_API_KEY estiver definida (na nuvem ou localmente), usa Groq Cloud (Qwen 27B / Llama).
+    2. Se TURING_AI_PROVIDER for especificado, respeita a escolha (groq, lmstudio, ollama, mock).
+    3. Se LM Studio estiver ativo na porta 1234, conecta nele automaticamente.
+    4. Fallback local: Ollama -> Mock heurístico.
     """
     provider_name = os.getenv("TURING_AI_PROVIDER", "auto").lower()
+
+    # Chave da Groq vinda de variáveis de ambiente ou streamlit secrets
+    groq_key = os.getenv("GROQ_API_KEY", "")
+    if not groq_key:
+        try:
+            import streamlit as _st  # noqa: PLC0415
+            if hasattr(_st, "secrets") and "GROQ_API_KEY" in _st.secrets:
+                groq_key = _st.secrets["GROQ_API_KEY"]
+        except Exception:
+            pass
+
+    if provider_name == "groq" or (provider_name == "auto" and groq_key):
+        return GroqProvider(api_key=groq_key)
+
     base_url = os.getenv("TURING_LMSTUDIO_ENDPOINT", "http://127.0.0.1:1234").rstrip("/v1/chat/completions").rstrip("/")
     if "1234" not in base_url:
         base_url = "http://127.0.0.1:1234"
@@ -1494,12 +1590,10 @@ def get_ai_provider() -> AIProviderInterface:
         res = requests.get("http://127.0.0.1:1234/v1/models", timeout=0.8)
         if res.status_code == 200:
             models_data = res.json().get("data", [])
-            # Prioriza modelos LLM generativos (filtrando modelos de embedding como nomic/bge)
             llm_models = [
                 m["id"] for m in models_data
                 if not any(e in m.get("id", "").lower() for e in ["embed", "embedding", "nomic", "bge"])
             ]
-            # Prioriza modelos generativos leves (0.8b, 1b, 2b, 3b, e4b) para fluidez máxima sem travar a CPU/GPU
             preferred_order = ["0.8b", "1b", "2b", "3b", "e4b", "4b", "7b", "9b"]
             def _weight(name: str) -> int:
                 nl = name.lower()

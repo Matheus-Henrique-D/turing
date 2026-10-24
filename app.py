@@ -975,6 +975,13 @@ with st.sidebar:
 
     st.markdown("---")
     st.caption("🧠 **Provedor de Inteligência Artificial**")
+
+    groq_key = os.getenv("GROQ_API_KEY", "")
+    if not groq_key and hasattr(st, "secrets") and "GROQ_API_KEY" in st.secrets:
+        groq_key = st.secrets["GROQ_API_KEY"]
+    groq_active = bool(groq_key)
+    turing_provider_env = os.getenv("TURING_AI_PROVIDER", "auto").lower()
+
     lm_studio_online = False
     active_model_name = ""
     try:
@@ -988,16 +995,17 @@ with st.sidebar:
     except Exception:
         pass
 
-    if lm_studio_online:
+    if turing_provider_env == "groq" or (turing_provider_env == "auto" and groq_active):
+        st.success("⚡ **Groq Cloud Ativo**\n`qwen/qwen3.8-27b` (Nuvem 24/7)")
+    elif lm_studio_online:
         st.success(f"🟢 **LM Studio Conectado**\n`{active_model_name}`")
     else:
-        provider_name = os.getenv("TURING_AI_PROVIDER", "auto").lower()
         provider_label = {
             "lmstudio": "LM Studio Local",
             "ollama": "Ollama Local (Llama 3.2)",
             "mock": "Modo Heurístico Offline",
             "auto": "Ollama / Auto",
-        }.get(provider_name, provider_name.title())
+        }.get(turing_provider_env, turing_provider_env.title())
         st.info(f"**{provider_label}**\n\nMotor de inferência ativo")
 
 
