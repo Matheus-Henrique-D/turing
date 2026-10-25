@@ -1232,17 +1232,24 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
     if st.session_state.show_topic_roulette and getattr(current_session, "topic", None):
         render_topic_roulette_animation(current_session.topic)
         st.session_state.show_topic_roulette = False
-        # Pausa para leitura do tema
+        # Pausa para leitura do tema — mostra o tema + contagem regressiva
+        # O timer do turno é resetado APÓS a pausa, não antes
         pause_ph = st.empty()
         for secs_left in range(11, 0, -1):
             pause_ph.markdown(f"""
-    <div style="text-align:center; padding: 18px; background: rgba(0,255,85,0.07); border: 1px solid var(--neon-green-dim); border-radius: 4px; margin-bottom: 14px;">
-        <div style="font-size: 0.8rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em;">📖 Leia o tema da rodada — partida começa em</div>
-        <div style="font-family: var(--font-pixel); font-size: 2.5rem; color: var(--warn); text-shadow: 0 0 12px rgba(255,190,26,0.5);">{secs_left:02d}s</div>
-    </div>
-    """, unsafe_allow_html=True)
+<div style="text-align:center; padding: 28px 20px; background: var(--bg-card); border: 2px solid var(--neon-green); border-radius: 8px; margin-bottom: 14px; box-shadow: 0 0 30px rgba(0,255,85,0.2);">
+    <div style="font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 10px;">📖 TEMA DESTA RODADA</div>
+    <div style="font-family: var(--font-mono); font-size: 1.5rem; font-weight: 700; color: var(--neon-green); text-shadow: 0 0 14px var(--neon-green); margin-bottom: 20px; padding: 12px 20px; background: rgba(0,255,85,0.08); border-radius: 4px; border: 1px solid var(--neon-green-dim);">{current_session.topic}</div>
+    <div style="font-size: 0.8rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 6px;">⏳ Partida começa em</div>
+    <div style="font-family: var(--font-pixel); font-size: 3rem; color: var(--warn); text-shadow: 0 0 16px rgba(255,190,26,0.6);">{secs_left:02d}s</div>
+</div>
+""", unsafe_allow_html=True)
             time.sleep(1)
         pause_ph.empty()
+        # Reseta o timer do turno AGORA, depois da pausa de leitura
+        st.session_state.turn_start_time = time.time()
+        st.session_state.turn_index_at_start = 0
+        st.session_state.timer_expired_handled = False
         st.rerun()
 
     # Histórico de mensagens
