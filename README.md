@@ -1,5 +1,9 @@
 # 🤖 Human or Not? — Plataforma Teste de Turing 👤
 
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://turing-jogo.streamlit.app/)
+
+> 🌐 **Jogue online agora mesmo:** **[https://turing-jogo.streamlit.app/](https://turing-jogo.streamlit.app/)**
+
 Plataforma interativa inspirada no **[humanornot.so](https://humanornot.so)** e no material didático do **Teste de Turing**, desenvolvida com arquitetura limpa em camadas (*Clean Architecture*), controle de acesso baseado em papéis (**RBAC**), persistência relacional em **SQLite**, suporte a **Handoff Humano** e **Mocks de IA**.
 
 ---
