@@ -1101,6 +1101,7 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
             st.session_state.timer_expired_handled = False
             st.session_state.turn_limit_seconds = 45
             st.session_state.show_topic_roulette = True
+            st.session_state.round_number = st.session_state.get("round_number", 0) + 1
             if new_session.topic:
                 st.session_state.past_round_topics.append(new_session.topic)
             st.rerun()
@@ -1123,6 +1124,7 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
                 st.session_state.timer_expired_handled = False
                 st.session_state.turn_limit_seconds = 45
                 st.session_state.show_topic_roulette = True
+                st.session_state.round_number = st.session_state.get("round_number", 0) + 1
                 if new_session.topic:
                     st.session_state.past_round_topics.append(new_session.topic)
                 st.rerun()
@@ -1230,6 +1232,18 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
     if st.session_state.show_topic_roulette and getattr(current_session, "topic", None):
         render_topic_roulette_animation(current_session.topic)
         st.session_state.show_topic_roulette = False
+        # Pausa para leitura do tema
+        pause_ph = st.empty()
+        for secs_left in range(11, 0, -1):
+            pause_ph.markdown(f"""
+    <div style="text-align:center; padding: 18px; background: rgba(0,255,85,0.07); border: 1px solid var(--neon-green-dim); border-radius: 4px; margin-bottom: 14px;">
+        <div style="font-size: 0.8rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em;">📖 Leia o tema da rodada — partida começa em</div>
+        <div style="font-family: var(--font-pixel); font-size: 2.5rem; color: var(--warn); text-shadow: 0 0 12px rgba(255,190,26,0.5);">{secs_left:02d}s</div>
+    </div>
+    """, unsafe_allow_html=True)
+            time.sleep(1)
+        pause_ph.empty()
+        st.rerun()
 
     # Histórico de mensagens
     messages = game_service.get_messages(current_session.id)
@@ -1313,15 +1327,20 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
                 elapsed = time.time() - (st.session_state.turn_start_time or time.time())
                 limit = st.session_state.turn_limit_seconds
 
-                # HUD do Timer digital 45s
+                # 1. Captura o input PRIMEIRO (antes de qualquer autorefresh)
+                user_input = st.chat_input("Digite sua mensagem para o interlocutor misterioso...")
+
+                # 2. Timer HUD
                 render_timer_hud(elapsed, limit)
 
-                # Alerta visual caso o tempo do turno seja ultrapassado (sem apagar o texto digitado)
+                # 3. Autorefresh do timer — só roda quando não há input sendo processado
+                if _HAS_AUTOREFRESH and not user_input:
+                    st_autorefresh(interval=1000, key="timer_live_refresh")
+
+                # 4. Alerta de tempo expirado
                 if elapsed >= limit:
                     st.caption("⏱️ **Tempo sugerido expirado.** Finalize sua mensagem e pressione Enter para enviar.")
 
-                # Caixa de entrada do jogador com alta responsividade
-                user_input = st.chat_input("Digite sua mensagem para o interlocutor misterioso...")
 
                 if user_input and user_input.strip():
                     clean_input = user_input.strip()
@@ -1417,14 +1436,20 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
                 user_already_voted = True
 
         if user_already_voted:
-            st.markdown("""
+            # Recarrega a sessão para ver se o status mudou
+            refreshed = game_service.get_session(current_session.id)
+            if refreshed and refreshed.status == STATUS_FINISHED:
+                # Ambos votaram — avança direto para a tela de resultado
+                st.rerun()
+            else:
+                st.markdown("""
             <div class="vote-panel" style="text-align:center;">
                 <h3>✅ SEU VOTO FOI REGISTRADO!</h3>
                 <p style="font-size:1.1rem; color:var(--ink);">Aguardando o interlocutor misterioso concluir o voto dele...</p>
             </div>
             """, unsafe_allow_html=True)
-            if _HAS_AUTOREFRESH:
-                st_autorefresh(interval=1000, key="vote_sync_refresh")
+                if _HAS_AUTOREFRESH:
+                    st_autorefresh(interval=1000, key="vote_sync_refresh")
         else:
             st.markdown("""
             <div class="vote-panel">
@@ -1531,7 +1556,19 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
             """, unsafe_allow_html=True)
 
         st.write("")
-        if st.button("🎲 JOGAR OUTRA RODADA", use_container_width=True, type="primary"):
+        rounds_done = st.session_state.get("round_number", 1)
+        if rounds_done < 3:
+            btn_label = f"🎲 JOGAR RODADA {rounds_done + 1}/3"
+        else:
+            btn_label = "🏁 VER RESULTADO FINAL"
+        if st.button(btn_label, use_container_width=True, type="primary"):
+            # Adiciona o tópico desta rodada à lista de exclusão se ainda não estiver
+            if current_session.topic and current_session.topic not in st.session_state.past_round_topics:
+                st.session_state.past_round_topics.append(current_session.topic)
+            if rounds_done >= 3:
+                # Reset completo após 3 rodadas
+                st.session_state.round_number = 0
+                st.session_state.past_round_topics = []
             st.session_state.active_session_id = None
             st.session_state.turn_start_time = None
             st.session_state.timer_expired_handled = False
