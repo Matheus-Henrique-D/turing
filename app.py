@@ -743,6 +743,14 @@ if "is_searching_match" not in st.session_state:
     st.session_state.is_searching_match = False
 if "match_search_start_time" not in st.session_state:
     st.session_state.match_search_start_time = None
+if "round_number" not in st.session_state:
+    st.session_state.round_number = 0
+if "round_history" not in st.session_state:
+    st.session_state.round_history = []
+if "show_final_scoreboard" not in st.session_state:
+    st.session_state.show_final_scoreboard = False
+if "round_transition_to" not in st.session_state:
+    st.session_state.round_transition_to = None
 
 
 
@@ -862,6 +870,113 @@ def render_topic_roulette_animation(selected_topic: str):
     """, unsafe_allow_html=True)
     time.sleep(2.5)
     placeholder.empty()
+
+
+def render_round_transition_animation(from_round: int, to_round: int):
+    """Renderiza uma breve animação retro-arcade de transição de uma rodada para a outra."""
+    ph = st.empty()
+    steps = [
+        ("🏁 RODADA CONCLUÍDA!", "Computando estatísticas do teste...", "var(--neon-green)"),
+        (f"⚡ PREPARANDO RODADA {to_round} DE 3 ⚡", "Sorteando novo interlocutor e ambiente...", "var(--warn)"),
+        (f"🚀 INICIANDO RODADA {to_round}/3!", "Prepare-se para o novo teste de percepção!", "var(--neon-magenta)"),
+    ]
+    for title, subtitle, color in steps:
+        ph.markdown(f"""
+        <div style="text-align:center; padding: 45px 25px; background: var(--bg-card); border: 2px solid {color}; border-radius: 8px; margin: 30px auto; max-width: 650px; box-shadow: 0 0 35px rgba(0, 255, 85, 0.25);">
+            <div style="font-family: var(--font-pixel); font-size: 2.8rem; color: {color}; text-shadow: 0 0 16px {color}; margin-bottom: 12px; letter-spacing: 0.08em;">
+                {title}
+            </div>
+            <div style="font-size: 1.15rem; color: var(--ink); margin-bottom: 8px;">
+                {subtitle}
+            </div>
+            <div style="font-size: 0.85rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-top: 16px;">
+                Turing Test Phase {to_round} // Carregando conexão...
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        time.sleep(1.2)
+    ph.empty()
+
+
+def render_final_scoreboard(round_history: list[dict], user_name: str):
+    """Renderiza o placar final detalhado após a conclusão da 3ª rodada."""
+    wins_count = sum(1 for r in round_history if r.get("is_win"))
+    total_rounds = len(round_history)
+    accuracy_pct = (wins_count / total_rounds * 100) if total_rounds > 0 else 0
+
+    if accuracy_pct >= 66:
+        overall_title = "🏆 DETETIVE DE TURING DESTAQUE!"
+        overall_subtitle = "Excelente percepção! Você diferenciou humanos de IAs na maioria dos testes."
+        overall_color = "var(--neon-green)"
+    elif accuracy_pct >= 33:
+        overall_title = "⚖️ RESULTADO BALANCEADO"
+        overall_subtitle = "Você conseguiu identificar parte dos interlocutores, mas a IA conseguiu te enganar."
+        overall_color = "var(--warn)"
+    else:
+        overall_title = "🤖 VOCÊ FOI ENGANADO PELA MÁQUINA!"
+        overall_subtitle = "As IAs modernas e os jogadores disfarçados superaram sua percepção neste teste."
+        overall_color = "var(--danger)"
+
+    st.markdown(f"""
+    <div style="text-align:center; padding: 26px 20px; background: var(--bg-card); border: 2px solid {overall_color}; border-radius: 6px; margin-bottom: 24px; box-shadow: 0 0 30px rgba(0,255,85,0.15);">
+        <div style="font-family: var(--font-pixel); font-size: 2.6rem; color: {overall_color}; text-shadow: 0 0 16px {overall_color}; margin-bottom: 6px;">
+            {overall_title}
+        </div>
+        <div style="font-size: 1.1rem; color: var(--ink); margin-bottom: 14px;">
+            {overall_subtitle}
+        </div>
+        <div style="display:inline-block; padding: 6px 18px; background: rgba(255,255,255,0.05); border-radius: 20px; border: 1px solid var(--line); font-size: 1rem; color: var(--muted);">
+            Placar Geral: <b style="color:{overall_color}; font-size:1.25rem;">{wins_count} acertos</b> de <b>{total_rounds} rodadas</b> ({accuracy_pct:.0f}% de taxa de acerto)
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown("<h3 style='font-family:var(--font-pixel); font-size:1.8rem; color:var(--neon-green); margin-bottom:12px;'>📊 DETALHAMENTO DAS 3 RODADAS</h3>", unsafe_allow_html=True)
+
+    for item in round_history:
+        r_num = item.get("round", 1)
+        guess = item.get("my_guess", "AI")
+        actual = item.get("actual", "AI")
+        is_win = item.get("is_win", False)
+        topic = item.get("topic", "Tema não informado")
+        opponent_label = item.get("opponent_label", "")
+
+        guess_str = "🤖 Inteligência Artificial" if guess == "AI" else "👤 Humano"
+        actual_str = "🤖 Inteligência Artificial" if actual == "AI" else "👤 Humano"
+
+        if is_win:
+            card_border = "var(--neon-green)"
+            card_bg = "rgba(0, 255, 85, 0.05)"
+            badge_html = "<span style='padding: 6px 12px; background: rgba(0,255,85,0.18); color: var(--neon-green); border: 1px solid var(--neon-green); border-radius: 4px; font-weight:700; font-size:0.95rem;'>✅ VOCÊ ACERTOU</span>"
+        else:
+            card_border = "var(--danger)"
+            card_bg = "rgba(255, 51, 85, 0.06)"
+            badge_html = "<span style='padding: 6px 12px; background: rgba(255,51,85,0.18); color: var(--danger); border: 1px solid var(--danger); border-radius: 4px; font-weight:700; font-size:0.95rem;'>❌ VOCÊ ERROU</span>"
+
+        details_extra = f"<div style='font-size:0.85rem; color:var(--muted); margin-top:6px;'>Interlocutor Real: <b>{opponent_label}</b></div>" if opponent_label else ""
+
+        st.markdown(f"""
+        <div style="background: {card_bg}; border: 1px solid {card_border}; border-left: 6px solid {card_border}; border-radius: 4px; padding: 18px 22px; margin-bottom: 16px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom: 10px;">
+                <div>
+                    <span style="font-family:var(--font-pixel); font-size:1.6rem; color:var(--ink);">RODADA {r_num}</span>
+                    <span style="font-size:0.85rem; color:var(--muted); margin-left: 10px;">• {topic}</span>
+                </div>
+                <div>{badge_html}</div>
+            </div>
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 10px; padding: 12px; background: rgba(0,0,0,0.25); border-radius: 4px;">
+                <div>
+                    <div style="font-size:0.75rem; color:var(--muted); text-transform:uppercase; letter-spacing:0.08em;">Seu Palpite:</div>
+                    <div style="font-size:1.05rem; color:var(--ink); font-weight:600; margin-top:2px;">{guess_str}</div>
+                </div>
+                <div>
+                    <div style="font-size:0.75rem; color:var(--muted); text-transform:uppercase; letter-spacing:0.08em;">A Verdade:</div>
+                    <div style="font-size:1.05rem; color:{card_border}; font-weight:600; margin-top:2px;">{actual_str}</div>
+                </div>
+            </div>
+            {details_extra}
+        </div>
+        """, unsafe_allow_html=True)
 
 
 def render_matchmaking_radar(elapsed_seconds: float, timeout_seconds: int = 20, waiting_count: int = 1):
@@ -1065,6 +1180,32 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
     st.markdown("<div class='main-header'>HUMAN OR NOT?</div>", unsafe_allow_html=True)
     st.markdown("<p style='color:var(--muted); margin-bottom: 20px;'>Descubra em 5 mensagens se você está conversando com um Humano real ou com uma IA.</p>", unsafe_allow_html=True)
 
+    # ── TRANSIÇÃO ANIMADA ENTRE RODADAS (ex: Rodada 1 -> 2 ou 2 -> 3) ─────────
+    if st.session_state.round_transition_to:
+        f_rnd, t_rnd = st.session_state.round_transition_to
+        st.session_state.round_transition_to = None
+        render_round_transition_animation(f_rnd, t_rnd)
+
+    # ── ESTADO ESPECIAL: PLACAR FINAL APÓS AS 3 RODADAS ────────────────────────
+    if st.session_state.show_final_scoreboard:
+        render_final_scoreboard(st.session_state.round_history, user.full_name)
+        st.write("")
+        col_end1, col_end2 = st.columns([1, 1])
+        with col_end1:
+            if st.button("🔄 INICIAR NOVO CICLO (3 RODADAS)", use_container_width=True, type="primary"):
+                st.session_state.round_number = 0
+                st.session_state.round_history = []
+                st.session_state.past_round_topics = []
+                st.session_state.show_final_scoreboard = False
+                st.session_state.active_session_id = None
+                st.rerun()
+        with col_end2:
+            if st.button("🚪 VOLTAR AO LOBBY", use_container_width=True):
+                st.session_state.show_final_scoreboard = False
+                st.session_state.active_session_id = None
+                st.rerun()
+        st.stop()
+
     # ── ESTADO 1: RADAR DE MATCHMAKING EM ANDAMENTO ─────────────────────────────
     if st.session_state.is_searching_match and not st.session_state.active_session_id:
         elapsed = time.time() - (st.session_state.match_search_start_time or time.time())
@@ -1085,6 +1226,7 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
             st.session_state.timer_expired_handled = False
             st.session_state.turn_limit_seconds = 45
             st.session_state.show_topic_roulette = True
+            st.session_state.round_number = st.session_state.get("round_number", 0) + 1
             st.rerun()
 
         # Timeout do radar (20s): inicia contra IA para não travar o jogador
@@ -1171,6 +1313,7 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
                     st.session_state.timer_expired_handled = False
                     st.session_state.turn_limit_seconds = 45
                     st.session_state.show_topic_roulette = True
+                    st.session_state.round_number = st.session_state.get("round_number", 0) + 1
                 else:
                     # Entra na tela de radar de busca
                     st.session_state.is_searching_match = True
@@ -1189,6 +1332,7 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
                 st.session_state.timer_expired_handled = False
                 st.session_state.turn_limit_seconds = 45
                 st.session_state.show_topic_roulette = True
+                st.session_state.round_number = st.session_state.get("round_number", 0) + 1
                 if new_session.topic:
                     st.session_state.past_round_topics.append(new_session.topic)
                 st.rerun()
@@ -1280,11 +1424,14 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
         </div>
         """, unsafe_allow_html=True)
 
-    # Header da partida (Turnos + Botão de Handoff)
+    # Header da partida (Turnos + Rodada + Botão de Handoff)
+    current_round_display = min(3, max(1, st.session_state.get("round_number", 1)))
     progress_ratio = min(my_turn_count / MAX_TURNS_PER_GAME, 1.0)
-    col_bar, col_tag, col_hand = st.columns([3, 1, 1])
+    col_bar, col_rnd, col_tag, col_hand = st.columns([3, 1, 1, 1])
     with col_bar:
         st.progress(progress_ratio)
+    with col_rnd:
+        st.markdown(f"<div class='hud-badge' style='border-color:var(--neon-green); color:var(--neon-green);'>RODADA {current_round_display}/3</div>", unsafe_allow_html=True)
     with col_tag:
         st.markdown(f"<div class='hud-badge'>TURNO {my_turn_count}/{MAX_TURNS_PER_GAME}</div>", unsafe_allow_html=True)
     with col_hand:
@@ -1500,8 +1647,24 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
         actual_str = "🤖 Inteligência Artificial" if actual == "AI" else "👤 Humano"
         voted_str = "🤖 Inteligência Artificial" if my_guess == "AI" else "👤 Humano"
 
+        # Registra a rodada no histórico do jogador caso ainda não tenha sido registrada
+        if "round_history" not in st.session_state:
+            st.session_state.round_history = []
+        already_saved = any(r.get("session_id") == current_session.id for r in st.session_state.round_history)
+        if not already_saved:
+            current_r_num = st.session_state.get("round_number", len(st.session_state.round_history) + 1)
+            opp_label = f"@{peer_user.username}" if (is_multiplayer and peer_user) else ("IA da Nuvem (Groq/Qwen)" if actual == "AI" else "Simulação Humana")
+            st.session_state.round_history.append({
+                "session_id": current_session.id,
+                "round": current_r_num,
+                "my_guess": my_guess,
+                "actual": actual,
+                "is_win": bool(my_is_win),
+                "topic": current_session.topic or "Tema Geral",
+                "opponent_label": opp_label,
+            })
+
         st.write("")
-        if my_is_win:
             st.markdown(f"""
             <div class="result-win">
                 <h2>🎉 PARABÉNS! VOCÊ ACERTOU!</h2>
@@ -1567,15 +1730,17 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
         if rounds_done < 3:
             btn_label = f"🎲 JOGAR RODADA {rounds_done + 1}/3"
         else:
-            btn_label = "🏁 VER RESULTADO FINAL"
+            btn_label = "🏁 VER PLACAR FINAL (3/3)"
         if st.button(btn_label, use_container_width=True, type="primary"):
             # Adiciona o tópico desta rodada à lista de exclusão se ainda não estiver
             if current_session.topic and current_session.topic not in st.session_state.past_round_topics:
                 st.session_state.past_round_topics.append(current_session.topic)
-            if rounds_done >= 3:
-                # Reset completo após 3 rodadas
-                st.session_state.round_number = 0
-                st.session_state.past_round_topics = []
+            if rounds_done < 3:
+                # Dispara a breve animação de transição para a próxima rodada
+                st.session_state.round_transition_to = (rounds_done, rounds_done + 1)
+            else:
+                # Marca para abrir o placar final detalhado
+                st.session_state.show_final_scoreboard = True
             st.session_state.active_session_id = None
             st.session_state.turn_start_time = None
             st.session_state.timer_expired_handled = False
