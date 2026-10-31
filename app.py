@@ -1373,9 +1373,10 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
     is_multiplayer = getattr(current_session, "is_multiplayer", False)
 
     # Roleta automática do tema executada apenas uma vez no início da rodada
+    # Desativa a flag ANTES de rodar a animação para evitar loop infinito caso haja rerun durante o sleep
     if st.session_state.show_topic_roulette and getattr(current_session, "topic", None):
-        render_topic_roulette_animation(current_session.topic)
         st.session_state.show_topic_roulette = False
+        render_topic_roulette_animation(current_session.topic)
         # Pausa para leitura do tema — mostra o tema + contagem regressiva
         # O timer do turno é resetado APÓS a pausa, não antes
         pause_ph = st.empty()
