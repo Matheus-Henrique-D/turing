@@ -1665,6 +1665,7 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
             })
 
         st.write("")
+        if my_is_win:
             st.markdown(f"""
             <div class="result-win">
                 <h2>🎉 PARABÉNS! VOCÊ ACERTOU!</h2>
