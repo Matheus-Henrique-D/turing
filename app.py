@@ -751,6 +751,8 @@ if "show_final_scoreboard" not in st.session_state:
     st.session_state.show_final_scoreboard = False
 if "round_transition_to" not in st.session_state:
     st.session_state.round_transition_to = None
+if "round_finished_at" not in st.session_state:
+    st.session_state.round_finished_at = None
 
 
 
@@ -1665,6 +1667,10 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
                 "opponent_label": opp_label,
             })
 
+        # Inicializa o cronômetro de 5 segundos para avanço automático da rodada
+        if "round_finished_at" not in st.session_state or st.session_state.round_finished_at is None:
+            st.session_state.round_finished_at = time.time()
+
         st.write("")
         if my_is_win:
             st.markdown(f"""
@@ -1729,25 +1735,67 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
 
         st.write("")
         rounds_done = st.session_state.get("round_number", 1)
+
+        # Contagem regressiva de 5 segundos para avanço automático sincronizado
+        time_in_result = time.time() - (st.session_state.round_finished_at or time.time())
+        auto_advance_seconds = 5
+        seconds_left = max(0, int(auto_advance_seconds - time_in_result))
+
         if rounds_done < 3:
-            btn_label = f"🎲 JOGAR RODADA {rounds_done + 1}/3"
+            st.markdown(f"""
+            <div style="text-align:center; padding: 12px; background: rgba(0,255,85,0.06); border: 1px dashed var(--neon-green); border-radius: 4px; margin-bottom: 12px;">
+                <span style="color:var(--muted); font-size:0.95rem;">Avançando para a <b>Rodada {rounds_done + 1}/3</b> automaticamente em:</span>
+                <b style="font-family:var(--font-pixel); font-size:1.8rem; color:var(--warn); margin-left: 8px;">{seconds_left:02d}s</b>
+            </div>
+            """, unsafe_allow_html=True)
+            btn_label = f"🎲 AVANÇAR AGORA (RODADA {rounds_done + 1}/3)"
         else:
-            btn_label = "🏁 VER PLACAR FINAL (3/3)"
-        if st.button(btn_label, use_container_width=True, type="primary"):
-            # Adiciona o tópico desta rodada à lista de exclusão se ainda não estiver
+            st.markdown(f"""
+            <div style="text-align:center; padding: 12px; background: rgba(0,255,85,0.06); border: 1px dashed var(--neon-green); border-radius: 4px; margin-bottom: 12px;">
+                <span style="color:var(--muted); font-size:0.95rem;">Exibindo o <b>Placar Final</b> automaticamente em:</span>
+                <b style="font-family:var(--font-pixel); font-size:1.8rem; color:var(--warn); margin-left: 8px;">{seconds_left:02d}s</b>
+            </div>
+            """, unsafe_allow_html=True)
+            btn_label = "🏁 VER PLACAR FINAL AGORA (3/3)"
+
+        # Função auxiliar para avançar de rodada
+        def advance_to_next():
+            st.session_state.round_finished_at = None
             if current_session.topic and current_session.topic not in st.session_state.past_round_topics:
                 st.session_state.past_round_topics.append(current_session.topic)
             if rounds_done < 3:
-                # Dispara a breve animação de transição para a próxima rodada
                 st.session_state.round_transition_to = (rounds_done, rounds_done + 1)
+                if is_multiplayer:
+                    # Conecta automaticamente à próxima rodada compartilhada da mesma dupla
+                    next_round_sess = game_service.get_or_create_next_multiplayer_round(
+                        current_session,
+                        exclude_topics=st.session_state.past_round_topics
+                    )
+                    st.session_state.active_session_id = next_round_sess.id
+                    st.session_state.show_topic_roulette = True
+                    st.session_state.round_number = rounds_done + 1
+                    st.session_state.turn_start_time = time.time()
+                    st.session_state.turn_index_at_start = 0
+                    st.session_state.timer_expired_handled = False
+                else:
+                    st.session_state.active_session_id = None
             else:
-                # Marca para abrir o placar final detalhado
                 st.session_state.show_final_scoreboard = True
-            st.session_state.active_session_id = None
+                st.session_state.active_session_id = None
+
             st.session_state.turn_start_time = None
             st.session_state.timer_expired_handled = False
             st.session_state.is_searching_match = False
             st.rerun()
+
+        # Clique manual no botão OU disparo automático após 5 segundos
+        manual_clicked = st.button(btn_label, use_container_width=True, type="primary")
+        if manual_clicked or (time_in_result >= auto_advance_seconds):
+            advance_to_next()
+
+        # Autorefresh suave a cada 1s enquanto conta os 5 segundos do resultado
+        if _HAS_AUTOREFRESH and time_in_result < auto_advance_seconds:
+            st_autorefresh(interval=1000, key="result_auto_advance_refresh")
 
 
 # ==============================================================================

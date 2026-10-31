@@ -34,6 +34,7 @@ class GameSession:
     player2_is_win: Optional[bool] = None
     is_multiplayer: bool = False
     pretend_ai_user_id: Optional[int] = None
+    next_session_id: Optional[str] = None
 
     @classmethod
     def from_row(cls, row) -> "GameSession":
@@ -44,6 +45,7 @@ class GameSession:
         p2_win = bool(row["player2_is_win"]) if "player2_is_win" in keys and row["player2_is_win"] is not None else None
         is_mp = bool(row["is_multiplayer"]) if "is_multiplayer" in keys and row["is_multiplayer"] is not None else False
         pretend_id = row["pretend_ai_user_id"] if "pretend_ai_user_id" in keys else None
+        next_sid = row["next_session_id"] if "next_session_id" in keys else None
 
         return cls(
             id=row["id"],
@@ -61,7 +63,8 @@ class GameSession:
             player2_guess=p2_guess,
             player2_is_win=p2_win,
             is_multiplayer=is_mp,
-            pretend_ai_user_id=pretend_id
+            pretend_ai_user_id=pretend_id,
+            next_session_id=next_sid
         )
 
 class SessionRepository:
@@ -170,6 +173,17 @@ class SessionRepository:
                 WHERE id = ?
                 """, (STATUS_FINISHED, user_guess, 1 if is_win else 0, now, session_id))
                 return cursor.rowcount > 0
+
+    @staticmethod
+    def set_next_session(session_id: str, next_session_id: str) -> bool:
+        """Salva o ID da próxima sessão (rodada seguinte) compartilhada entre os 2 jogadores."""
+        with get_db_connection() as conn:
+            cursor = conn.execute("""
+            UPDATE game_sessions
+            SET next_session_id = ?
+            WHERE id = ?
+            """, (next_session_id, session_id))
+            return cursor.rowcount > 0
 
     @staticmethod
     def get_stats_for_user(user_id: int) -> dict:
