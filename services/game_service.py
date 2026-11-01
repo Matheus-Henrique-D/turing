@@ -34,11 +34,12 @@ class GameService:
 
     def start_new_game(self, user_id: int, exclude_topics: Optional[list] = None) -> GameSession:
         """Inicia uma nova partida de Teste de Turing para o usuário autenticado."""
-        opponent_type = random.choice(["HUMAN", "AI"])
-        if opponent_type == "HUMAN":
-            persona = random.choice(HUMAN_PERSONAS)
-        else:
-            persona = random.choice(AI_PERSONAS)
+        # REGRA DE TRANSPARÊNCIA: Em partidas singleplayer / treino contra o sistema,
+        # o interlocutor é sempre uma IA. O sistema nunca mente sobre a identidade do oponente.
+        opponent_type = "AI"
+        # A IA pode adotar tanto personas que simulam comportamento humano quanto personas analíticas
+        all_personas = HUMAN_PERSONAS + AI_PERSONAS
+        persona = random.choice(all_personas)
 
         # Seleciona tema que não esteja na lista de exclusão
         available_topics = [t for t in ROUND_TOPICS if t not in (exclude_topics or [])]

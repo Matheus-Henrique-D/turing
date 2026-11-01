@@ -51,16 +51,21 @@ class MatchmakingService:
         threshold = (datetime.now() - timedelta(seconds=HEARTBEAT_TIMEOUT_SECONDS)).isoformat()
 
         with get_db_connection() as conn:
-            # 1. Verifica se já está pareado em alguma sessão recente
+            # 1. Verifica se já está pareado em alguma sessão recente ainda ativa
             cursor = conn.execute("""
             SELECT * FROM matchmaking_queue WHERE user_id = ?
             """, (user_id,))
             existing = cursor.fetchone()
             if existing and existing["status"] == "matched" and existing["matched_session_id"]:
-                return {
-                    "status": "matched",
-                    "session_id": existing["matched_session_id"]
-                }
+                sess_cursor = conn.execute("SELECT status FROM game_sessions WHERE id = ?", (existing["matched_session_id"],))
+                sess_row = sess_cursor.fetchone()
+                if sess_row and sess_row["status"] == STATUS_ACTIVE:
+                    return {
+                        "status": "matched",
+                        "session_id": existing["matched_session_id"]
+                    }
+                else:
+                    conn.execute("DELETE FROM matchmaking_queue WHERE user_id = ?", (user_id,))
 
             # 2. Busca outro jogador disponível na fila
             cursor = conn.execute("""
@@ -146,10 +151,15 @@ class MatchmakingService:
                 # Se não tem entrada, tenta join_queue fora deste bloco
                 pass
             elif entry["status"] == "matched" and entry["matched_session_id"]:
-                return {
-                    "status": "matched",
-                    "session_id": entry["matched_session_id"]
-                }
+                sess_cursor = conn.execute("SELECT status FROM game_sessions WHERE id = ?", (entry["matched_session_id"],))
+                sess_row = sess_cursor.fetchone()
+                if sess_row and sess_row["status"] == STATUS_ACTIVE:
+                    return {
+                        "status": "matched",
+                        "session_id": entry["matched_session_id"]
+                    }
+                else:
+                    conn.execute("DELETE FROM matchmaking_queue WHERE user_id = ?", (user_id,))
             elif entry["status"] == "waiting":
                 # Tenta parear se outro jogador acabou de entrar
                 cursor = conn.execute("""
