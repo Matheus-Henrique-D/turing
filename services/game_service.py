@@ -18,28 +18,59 @@ from models.session import GameSession, SessionRepository
 from models.message import Message, MessageRepository
 from services.ai_provider import get_ai_provider
 
-HUMAN_PERSONAS = ["gamer_jovem", "estudante_neutro", "ironico_zoeiro", "casual_gente_boa"]
-AI_PERSONAS = [
+# Personas de IA com comportamento mais robótico, analítico ou formal
+ROBOTIC_AI_PERSONAS = [
     "assistente_formal",
-    "ia_tentando_disfarcar",
     "filosofica_precisa",
-    "ia_camuflada",
-    "ia_filosofica_sutil",
-    "ia_ironica"
+    "ia_tentando_disfarcar"
 ]
+
+# Personas de IA com comportamento altamente adaptativo (reagem e se adaptam diretamente ao player)
+ADAPTIVE_HUMAN_PERSONAS = [
+    "gamer_jovem",
+    "estudante_neutro",
+    "ironico_zoeiro",
+    "casual_gente_boa",
+    "ia_camuflada",
+    "ia_adaptativa"
+]
+
+HUMAN_PERSONAS = ADAPTIVE_HUMAN_PERSONAS
+AI_PERSONAS = ROBOTIC_AI_PERSONAS + ["ia_filosofica_sutil", "ia_ironica"]
 
 class GameService:
     def __init__(self, ai_provider = None):
         self.ai_provider = ai_provider or get_ai_provider()
 
-    def start_new_game(self, user_id: int, exclude_topics: Optional[list] = None) -> GameSession:
-        """Inicia uma nova partida de Teste de Turing para o usuário autenticado."""
-        # REGRA DE TRANSPARÊNCIA: Em partidas singleplayer / treino contra o sistema,
-        # o interlocutor é sempre uma IA. O sistema nunca mente sobre a identidade do oponente.
+    def start_new_game(
+        self,
+        user_id: int,
+        exclude_topics: Optional[list] = None,
+        round_number: Optional[int] = None
+    ) -> GameSession:
+        """
+        Inicia uma nova partida de Teste de Turing para o usuário autenticado.
+        Garante a regra: em algumas rodadas a IA se comporta como robô, mas
+        em pelo menos uma das rodadas ela se adapta diretamente ao que o player diz!
+        """
         opponent_type = "AI"
-        # A IA pode adotar tanto personas que simulam comportamento humano quanto personas analíticas
-        all_personas = HUMAN_PERSONAS + AI_PERSONAS
-        persona = random.choice(all_personas)
+
+        # Identifica a rodada atual do ciclo (1 a 3)
+        current_round = round_number or (len(exclude_topics or []) + 1)
+
+        # Seleciona estilo da persona de acordo com a rodada para garantir contraste:
+        # Pelo menos uma rodada será puramente robótica/analítica e pelo menos uma será adaptativa
+        if current_round == 1:
+            # 50% de chance de começar robótica ou adaptativa
+            pool = ROBOTIC_AI_PERSONAS if random.random() < 0.5 else ADAPTIVE_HUMAN_PERSONAS
+        elif current_round == 2:
+            # Rodada 2: alta probabilidade de alternar com a anterior
+            pool = ADAPTIVE_HUMAN_PERSONAS if (current_round % 2 == 0) else ROBOTIC_AI_PERSONAS
+        else:
+            # Rodada 3: garante uma persona altamente adaptativa e espontânea
+            pool = ADAPTIVE_HUMAN_PERSONAS
+
+        persona = random.choice(pool)
 
         # Seleciona tema que não esteja na lista de exclusão
         available_topics = [t for t in ROUND_TOPICS if t not in (exclude_topics or [])]

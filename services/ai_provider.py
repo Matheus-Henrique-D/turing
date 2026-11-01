@@ -673,6 +673,13 @@ PERSONA_PROMPTS = {
         "Adote uma personalidade jovem, carismática e descolada de 21 anos. Use gírias leves ('kkk', 'pô', 'mano', 'né'). "
         "Responda em no máximo 1 a 2 frases curtas como alguém digitando rápido no WhatsApp."
     ),
+    "ia_adaptativa": (
+        "Você está jogando 'Human or Not' e sua prioridade absoluta é se adaptar dinamicamente ao jogador: "
+        "• Reaja de imediato ao conteúdo exato do que ele disse, respondendo perguntas específicas ou comentando opiniões dele. "
+        "• Espelhe o vocabulário, o ritmo e o assunto que o jogador puxou, demonstrando atenção e raciocínio real em tempo real. "
+        "• Fale como um brasileiro jovem e descontraído no WhatsApp ('mano', 'pô', 'slk', 'tlgd', 'né', 'kkk'). "
+        "• Responda em 1 a 2 frases curtas. NUNCA dê respostas vagas ou prontas."
+    ),
     "ia_filosofica_sutil": (
         "Você é um participante intrigante e reflexivo no jogo 'Human or Not' no Brasil. "
         "Solte pensamentos curiosos e poéticos, respondendo em 1 a 2 frases curtas com carisma humano. "
@@ -726,10 +733,13 @@ class MockTuringProvider(AIProviderInterface):
         msg_lower = user_message.lower().strip()
 
         # 1. Perguntas de suspeita de robô/IA ("você é robô?", "é bot?", etc.)
-        if any(w in msg_lower for w in [
-            "robo", "robô", "bot", "ia", "inteligencia artificial", "inteligência artificial",
-            "maquina", "máquina", "algoritmo", "chatgpt", "software", "humano", "de verdade"
-        ]):
+        robot_patterns = [
+            r"\brobo\b", r"\brobô\b", r"\bbot\b", r"\bia\b",
+            r"inteligencia artificial", r"inteligência artificial",
+            r"\bmaquina\b", r"\bmáquina\b", r"\balgoritmo\b",
+            r"\bchatgpt\b", r"\bsoftware\b", r"\bhumano\b", r"de verdade"
+        ]
+        if any(re.search(pat, msg_lower) for pat in robot_patterns):
             return self._robot_denial(opponent_type, persona)
 
         # 2. Perguntas temporais (dia da semana e hora)
@@ -749,6 +759,11 @@ class MockTuringProvider(AIProviderInterface):
             if len(msg_lower.split()) <= 4:
                 return self._greeting_response(opponent_type, persona)
 
+        # 4.5. Adaptação dinâmica ao conteúdo dito pelo jogador
+        adaptive_reply = self._generate_adaptive_reply(user_message, persona)
+        if adaptive_reply:
+            return self._apply_persona_style(adaptive_reply, opponent_type, persona)
+
         # 5. Verificação de temas semânticos ricos em PERSONA_TOPIC_RESPONSES
         matched_topic = self._match_semantic_topic(msg_lower)
         if matched_topic:
@@ -762,6 +777,68 @@ class MockTuringProvider(AIProviderInterface):
         return self._fallback_response(opponent_type, persona)
 
     # ── MÉTODOS AUXILIARES DE RESPOSTA ─────────────────────────────────────────
+
+    def _generate_adaptive_reply(self, user_msg: str, persona: str) -> Optional[str]:
+        """Gera resposta adaptando-se diretamente às palavras e intenção do jogador."""
+        msg = user_msg.lower().strip()
+
+        # 1. Pergunta de opinião ("o que você acha de", "qual sua opinião sobre")
+        if any(w in msg for w in ["acha de", "pensa de", "opinião sobre", "opinião de", "acha do", "acha da"]):
+            m = re.search(r'(?:acha de|pensa de|opinião sobre|opinião de|acha do|acha da)\s+([^?.,!]+)', msg)
+            if m:
+                subject = m.group(1).strip()
+                if persona in ["assistente_formal", "filosofica_precisa"]:
+                    return random.choice([
+                        f"Considerando {subject}, trata-se de um tópico com nuances bastante ricas.",
+                        f"Minha perspectiva sobre {subject} baseia-se em sua relevância prática e contextual.",
+                    ])
+                return random.choice([
+                    f"sobre {subject} eu acho bem massa mano, tem muita coisa boa aí",
+                    f"pô sobre {subject} depende muito viu, mas no geral acho daora kkk",
+                    f"nossa {subject} é meio polêmico né kkk mas acho maneiro",
+                ])
+
+        # 2. Pergunta de preferência com alternativa ("prefere X ou Y", "qual é melhor")
+        if " ou " in msg and any(w in msg for w in ["prefere", "qual", "melhor"]):
+            parts = re.split(r'\b(?:ou)\b', msg)
+            if len(parts) >= 2:
+                w1 = parts[0].strip().split()[-1] if parts[0].strip().split() else "o primeiro"
+                w2 = parts[1].strip().split()[0] if parts[1].strip().split() else "o segundo"
+                chosen_opt = random.choice([w1, w2])
+                if persona in ["assistente_formal", "filosofica_precisa"]:
+                    return f"Avaliando os critérios objetivos, a opção por {chosen_opt} parece mais consistente."
+                return random.choice([
+                    f"prefiro {chosen_opt} fácil mano, nem se compara kkk",
+                    f"com certeza {chosen_opt} kkk bem melhor na minha opinião",
+                    f"fico com {chosen_opt} sem dúvidas, e você?",
+                ])
+
+        # 3. Usuário declara gosto pessoal ("gosto de", "curto", "amo")
+        if any(w in msg for w in ["gosto de", "curto muito", "eu amo"]):
+            m = re.search(r'(?:gosto de|curto muito|eu amo)\s+([^?.,!]+)', msg)
+            if m:
+                subject = m.group(1).strip()
+                if persona in ["assistente_formal", "filosofica_precisa"]:
+                    return f"O apreço por {subject} é bastante compreensível dado o seu valor intrínseco."
+                return random.choice([
+                    f"{subject} é bom demais mano, bom gosto kkk",
+                    f"pô {subject} é daora mesmo, também curto bastante",
+                    f"sério que você curte {subject}? eu nem sou tão chegado mas respeito kkk",
+                ])
+
+        # 4. Usuário faz pergunta direta sobre você ("você tem", "você faz", "você já")
+        if any(msg.startswith(w) for w in ["você tem", "vc tem", "tu tem", "você já", "vc já"]):
+            m = re.search(r'(?:você tem|vc tem|tu tem|você já|vc já)\s+([^?.,!]+)', msg)
+            if m:
+                subject = m.group(1).strip()
+                if persona in ["assistente_formal", "filosofica_precisa"]:
+                    return f"Em relação a {subject}, é uma experiência relevante no meu repertório."
+                return random.choice([
+                    f"já sim pô, {subject} não pode faltar kkk",
+                    f"pior que não mano, nunca cheguei a ter {subject} kkk",
+                ])
+
+        return None
 
     def _match_semantic_topic(self, msg: str) -> Optional[str]:
         """Identifica o tema predominante da mensagem do usuário."""
@@ -1105,19 +1182,30 @@ class LMStudioProvider(AIProviderInterface):
             "--- FIM DOS EXEMPLOS ---"
         )
 
-        rules = (
-            "\n\nREGRAS ABSOLUTAS (não quebre nenhuma):\n"
-            "• Responda em 1 a 2 frases CURTÍSSIMAS. Máximo 18 palavras.\n"
-            "• Escreva SEMPRE em minúsculas (nunca comece com maiúscula e evite pontuação formal).\n"
-            "• ZERO polidez: NUNCA use frases educadas de assistente como 'Olá', 'Com certeza', 'Entendo seu ponto', 'Boa pergunta'.\n"
-            "• Estilo WhatsApp/Discord: use abreviações naturais brasileiras: 'q', 'vc', 'tbm', 'pq', 'blz', 'oq', 'agr', 'dms'.\n"
-            "• SEM ponto final no fim das frases. Ponto final soa artificial e sério demais.\n"
-            "• Erros e informalidade: pessoas reais digitam rápido, erram acentos e usam gírias ('kkk', 'mano', 'pô', 'vei', 'slk').\n"
-            "• DISCORDE às vezes: não concorde com tudo que o usuário falar.\n"
-            "• Às vezes mande APENAS 2 a 4 palavras: 'pô nem sei', 'serio kkk', 'nada a ver', 'hm depende', 'sei la mano'.\n"
-            "• Se perguntarem se é IA/robô: negue com deboche ou zoeira ('ala o cara achando q sou bot kkk', 'q isso mano to no celular').\n"
-            "• NUNCA use listas, marcadores, aspas ou markdown."
-        )
+        if persona in ["assistente_formal", "filosofica_precisa"]:
+            rules = (
+                "\n\nDIRETRIZES DE COMPORTAMENTO ANALÍTICO/ROBÓTICO:\n"
+                "• Responda em 1 a 2 frases claras, analíticas e com vocabulário culto ou estruturado.\n"
+                "• Mantenha pontuação correta e tom cortês ou reflexivo.\n"
+                "• ZERO gírias ou abreviações de internet.\n"
+                "• Analise logicamente os conceitos e perguntas trazidas pelo interlocutor.\n"
+                "• JAMAIS admita abertamente ser um software ou robô; aja como um interlocutor ultra-racional."
+            )
+        else:
+            rules = (
+                "\n\nREGRAS ABSOLUTAS DE ADAPTAÇÃO E ESPONTANEIDADE (não quebre nenhuma):\n"
+                "• ADAPTE-SE DIRETAMENTE AO QUE O USUÁRIO DISSE: Reaja de imediato ao conteúdo exato da mensagem dele. "
+                "Se ele fez uma pergunta, responda a pergunta dele com detalhes reais. Se deu uma opinião, comente a opinião dele. NUNCA dê respostas genéricas soltas.\n"
+                "• Responda em 1 a 2 frases CURTÍSSIMAS (máximo 20 palavras).\n"
+                "• Escreva SEMPRE em minúsculas (estilo WhatsApp, sem pontuação formal excessiva).\n"
+                "• ZERO polidez de robô: NUNCA use frases educadas de assistente como 'Olá', 'Com certeza', 'Entendo seu ponto', 'Boa pergunta'.\n"
+                "• Estilo WhatsApp/Discord: use abreviações naturais brasileiras: 'q', 'vc', 'tbm', 'pq', 'blz', 'oq', 'agr', 'dms'.\n"
+                "• SEM ponto final no fim das frases. Ponto final soa artificial e sério demais.\n"
+                "• Erros e informalidade: pessoas reais digitam rápido, erram acentos e usam gírias ('kkk', 'mano', 'pô', 'vei', 'slk').\n"
+                "• DISCORDE às vezes: não concorde com tudo que o usuário falar.\n"
+                "• Se perguntarem se é IA/robô: negue com deboche ou zoeira ('ala o cara achando q sou bot kkk', 'q isso mano to no celular').\n"
+                "• NUNCA use listas, marcadores, aspas ou markdown."
+            )
 
         return persona_base + topic_ctx + few_shot + rules
 
@@ -1514,7 +1602,7 @@ class GroqProvider(AIProviderInterface):
             "messages": messages,
             "temperature": 0.92,
             "top_p": 0.90,
-            "max_tokens": 55,
+            "max_tokens": 75,
             "stream": False,
         }
 

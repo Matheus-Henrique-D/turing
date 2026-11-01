@@ -1252,13 +1252,15 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
         # Timeout do radar (20s): inicia contra IA para não travar o jogador
         if elapsed >= 20.0:
             MatchmakingService.leave_queue(user.id)
+            current_r = st.session_state.get("round_number", 0) + 1
             new_session = game_service.start_new_game(
                 user.id,
-                exclude_topics=st.session_state.past_round_topics
+                exclude_topics=st.session_state.past_round_topics,
+                round_number=current_r
             )
             st.session_state.active_session_id = new_session.id
             st.session_state.is_searching_match = False
-            st.session_state.round_number = st.session_state.get("round_number", 0) + 1
+            st.session_state.round_number = current_r
             st.session_state.turn_start_time = None
             st.session_state.turn_index_at_start = 0
             st.session_state.timer_expired_handled = False
@@ -1274,13 +1276,15 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
         with col_rc1:
             if st.button("⚡ JOGAR COM IA IMEDIATAMENTE", use_container_width=True):
                 MatchmakingService.leave_queue(user.id)
+                current_r = st.session_state.get("round_number", 0) + 1
                 new_session = game_service.start_new_game(
                     user.id,
-                    exclude_topics=st.session_state.past_round_topics
+                    exclude_topics=st.session_state.past_round_topics,
+                    round_number=current_r
                 )
                 st.session_state.active_session_id = new_session.id
                 st.session_state.is_searching_match = False
-                st.session_state.round_number = st.session_state.get("round_number", 0) + 1
+                st.session_state.round_number = current_r
                 st.session_state.turn_start_time = None
                 st.session_state.turn_index_at_start = 0
                 st.session_state.timer_expired_handled = False
@@ -1332,13 +1336,15 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
         with col_b2:
             if st.button("🤖 TREINO RÁPIDO CONTRA IA", use_container_width=True):
                 MatchmakingService.leave_queue(user.id)
+                current_r = st.session_state.get("round_number", 0) + 1
                 new_session = game_service.start_new_game(
                     user.id,
-                    exclude_topics=st.session_state.past_round_topics
+                    exclude_topics=st.session_state.past_round_topics,
+                    round_number=current_r
                 )
                 st.session_state.active_session_id = new_session.id
                 st.session_state.is_searching_match = False
-                st.session_state.round_number = st.session_state.get("round_number", 0) + 1
+                st.session_state.round_number = current_r
                 st.session_state.turn_start_time = None
                 st.session_state.turn_index_at_start = 0
                 st.session_state.timer_expired_handled = False
@@ -1702,11 +1708,11 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
         if is_multiplayer and peer_user:
             actual_str = f"👤 Humano (@{peer_user.username})"
         else:
-            from services.game_service import HUMAN_PERSONAS
-            if getattr(current_session, "persona", "") in HUMAN_PERSONAS:
-                actual_str = "🤖 Inteligência Artificial (simulando comportamento humano)"
+            from services.game_service import ROBOTIC_AI_PERSONAS
+            if getattr(current_session, "persona", "") in ROBOTIC_AI_PERSONAS:
+                actual_str = "🤖 Inteligência Artificial (comportamento analítico/robótico)"
             else:
-                actual_str = "🤖 Inteligência Artificial (Groq / Qwen)"
+                actual_str = "🤖 Inteligência Artificial (adaptativa, simulando humano)"
 
         voted_str = "🤖 Inteligência Artificial" if my_guess == "AI" else "👤 Humano"
 
@@ -1716,13 +1722,13 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
         already_saved = any(r.get("session_id") == current_session.id for r in st.session_state.round_history)
         if not already_saved:
             current_r_num = st.session_state.get("round_number", len(st.session_state.round_history) + 1)
-            from services.game_service import HUMAN_PERSONAS
+            from services.game_service import ROBOTIC_AI_PERSONAS
             if is_multiplayer and peer_user:
                 opp_label = f"@{peer_user.username} (Humano)"
-            elif getattr(current_session, "persona", "") in HUMAN_PERSONAS:
-                opp_label = "IA Simulando Humano"
+            elif getattr(current_session, "persona", "") in ROBOTIC_AI_PERSONAS:
+                opp_label = "IA Estilo Robô / Analítica"
             else:
-                opp_label = "IA (Groq / Qwen)"
+                opp_label = "IA Adaptativa (Simulando Humano)"
 
             st.session_state.round_history.append({
                 "session_id": current_session.id,
@@ -1854,7 +1860,8 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
                     # Avança automaticamente no modo singleplayer / treino contra IA
                     next_round_sess = game_service.start_new_game(
                         user.id,
-                        exclude_topics=st.session_state.past_round_topics
+                        exclude_topics=st.session_state.past_round_topics,
+                        round_number=rounds_done + 1
                     )
                     st.session_state.active_session_id = next_round_sess.id
                     st.session_state.round_number = rounds_done + 1
