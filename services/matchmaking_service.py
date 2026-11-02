@@ -345,13 +345,27 @@ class MatchmakingService:
     def leave_queue(user_id: int):
         """Remove o usuário da fila quando ele cancela ou sai da fila."""
         with get_db_connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute(
+                "SELECT status, matched_session_id FROM matchmaking_queue WHERE user_id = ?",
+                (user_id,)).fetchone()
+            if row and row["status"] == "matched" and row["matched_session_id"]:
+                sid = row["matched_session_id"]
+                # Cancellation and matching are serialized by this transaction.
+                conn.execute("DELETE FROM game_sessions WHERE id = ?", (sid,))
+                conn.execute("""
+                    UPDATE matchmaking_queue
+                    SET status = 'waiting', matched_session_id = NULL,
+                        ready_ack = 0, ack_migrated = 0, matched_at = NULL,
+                        last_heartbeat = ?
+                    WHERE matched_session_id = ? AND user_id != ?
+                """, (datetime.now().isoformat(), sid, user_id))
             conn.execute("DELETE FROM matchmaking_queue WHERE user_id = ?", (user_id,))
 
     @staticmethod
     def force_leave_queue(user_id: int):
         """Remoção explícita ao cancelar busca antes de qualquer pareamento."""
-        with get_db_connection() as conn:
-            conn.execute("DELETE FROM matchmaking_queue WHERE user_id = ?", (user_id,))
+        MatchmakingService.leave_queue(user_id)
 
     @staticmethod
     def has_played_real_human(user_id: int, recent_limit: int = 4) -> bool:

@@ -1334,9 +1334,10 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
                     st.session_state.past_round_topics.append(new_session.topic)
                 st.rerun()
         with col_rc2:
-            if st.button("❌ CANCELAR BUSCA", use_container_width=True):
+            if st.button("🏠 VOLTAR PARA A PÁGINA INICIAL", use_container_width=True):
                 MatchmakingService.leave_queue(user.id)
                 st.session_state.is_searching_match = False
+                st.session_state.active_session_id = None
                 st.rerun()
 
         if _HAS_AUTOREFRESH:
