@@ -16,15 +16,33 @@ from core.security import generate_salt, hash_password
 
 @contextmanager
 def get_db_connection():
-    """Gerenciador de contexto para conexão SQLite thread-safe."""
-    conn = sqlite3.connect(DATABASE_PATH, check_same_thread=False)
+    """
+    Gerenciador de contexto para conexão SQLite thread-safe.
+
+    WAL (Write-Ahead Log) está habilitado para permitir leituras simultâneas
+    sem bloquear escritas, eliminando a maior parte do lock contention.
+    Cada transação usa o modo DEFERRED por padrão; operações críticas de
+    matchmaking usam BEGIN IMMEDIATE explicitamente para serializar.
+    """
+    conn = sqlite3.connect(DATABASE_PATH, check_same_thread=False,
+                           timeout=10)   # 10s de timeout antes de OperationalError
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA journal_mode = WAL")     # múltiplos leitores + 1 escritor
+    conn.execute("PRAGMA synchronous = NORMAL")   # seguro com WAL, mais rápido que FULL
+    conn.execute("PRAGMA busy_timeout = 5000")    # espera até 5s em vez de falhar rápido
     try:
         yield conn
-        conn.commit()
+        # Só faz commit se não há transação BEGIN IMMEDIATE já aberta manualmente
+        try:
+            conn.commit()
+        except Exception:
+            pass
     except Exception:
-        conn.rollback()
+        try:
+            conn.rollback()
+        except Exception:
+            pass
         raise
     finally:
         conn.close()
@@ -76,7 +94,8 @@ def init_db():
             "is_multiplayer INTEGER DEFAULT 0",
             "pretend_ai_user_id INTEGER NULL",
             "next_session_id TEXT NULL",
-            "round_ready_ack INTEGER NOT NULL DEFAULT 0"
+            "round_ready_ack INTEGER NOT NULL DEFAULT 0",
+            "round_migrated_ack INTEGER NOT NULL DEFAULT 0"
         ]:
             try:
                 cursor.execute(f"ALTER TABLE game_sessions ADD COLUMN {col_def};")
@@ -95,11 +114,16 @@ def init_db():
             last_heartbeat TEXT NOT NULL
         );
         """)
-        # Migração segura: adiciona coluna de handshake se ainda não existir
-        try:
-            cursor.execute("ALTER TABLE matchmaking_queue ADD COLUMN ready_ack INTEGER NOT NULL DEFAULT 0;")
-        except Exception:
-            pass
+        # Migração segura: adiciona colunas de handshake e retenção de estado
+        for col_def in [
+            "ready_ack INTEGER NOT NULL DEFAULT 0",
+            "ack_migrated INTEGER NOT NULL DEFAULT 0",
+            "matched_at TEXT NULL"
+        ]:
+            try:
+                cursor.execute(f"ALTER TABLE matchmaking_queue ADD COLUMN {col_def};")
+            except Exception:
+                pass
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_matchmaking_status ON matchmaking_queue(status);")
         
         # Tabela de Mensagens

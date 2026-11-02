@@ -1241,15 +1241,21 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
         poll_status = poll_res.get("status", "waiting")
         poll_session_id = poll_res.get("session_id")
 
+        if poll_res.get("cancelled_timeout"):
+            st.warning("⚠️ Conexão com o par expirou por falta de resposta. Reiniciando busca na fila...")
+            st.session_state.match_search_start_time = time.time()
+            time.sleep(1.0)
+            st.rerun()
+
         # ── HANDSHAKE: Par encontrado → confirmar que este dispositivo está pronto
         if poll_status == "matched" and poll_session_id:
-            # Registra o ACK deste dispositivo no banco (operação idempotente)
+            # Registra o ACK deste dispositivo no banco via bitwise OR (operação atômica)
             ack_res = MatchmakingService.confirm_ready(user.id, poll_session_id)
             if ack_res["all_ready"]:
-                # Ambos confirmaram → transição simultânea
+                # Ambos confirmaram → transição simultânea autorizada
                 poll_status = "all_ready"
             else:
-                # Só este confirmou → aguardar o par (mantém tela de radar)
+                # Só este confirmou → aguardar o par (bloqueia avanço solitário)
                 poll_status = "ready_pending"
 
         # ── TRANSIÇÃO: Somente quando AMBOS confirmaram (ou timeout forçou avanço)
@@ -1422,6 +1428,9 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
         st.rerun()
 
     is_multiplayer = getattr(current_session, "is_multiplayer", False)
+    if is_multiplayer:
+        # Retenção de estado: Notifica que este aparelho já está na tela do jogo
+        MatchmakingService.confirm_migrated(user.id, current_session.id)
 
     # ── SINCRONIZAÇÃO DA ROLETA DE TEMAS E PAUSA DE LEITURA (100% SINCRONIZADO) ──
     # Utiliza o timestamp da sessão no banco de dados para garantir sincronia milissegundo a milissegundo entre os dois aparelhos
@@ -1896,10 +1905,11 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
                         st.session_state.active_session_id = next_round_sess.id
                         st.session_state.round_number = rounds_done + 1
                         st.session_state.mp_round_pending_id = None
+                        game_service.confirm_round_migrated(next_round_sess.id, user.id)
                     else:
                         # Salva o ID da próxima rodada e aguarda o par confirmar
                         st.session_state.mp_round_pending_id = next_round_sess.id
-                        # NÃO avança ainda — o polling abaixo cuidará disso
+                        st.rerun()
                 else:
                     # Avança automaticamente no modo singleplayer / treino contra IA
                     next_round_sess = game_service.start_new_game(
@@ -1921,11 +1931,12 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
         # ── POLLING DO HANDSHAKE DE RODADA (multiplayer aguardando o par)
         mp_pending_id = st.session_state.get("mp_round_pending_id")
         if mp_pending_id and is_multiplayer:
-            ack_check = game_service.confirm_round_ready(mp_pending_id, user.id)
+            ack_check = game_service.check_round_ready(mp_pending_id)
             if ack_check["all_ready"]:
                 st.session_state.active_session_id = mp_pending_id
                 st.session_state.round_number = rounds_done + 1
                 st.session_state.mp_round_pending_id = None
+                game_service.confirm_round_migrated(mp_pending_id, user.id)
                 st.session_state.turn_start_time = None
                 st.session_state.timer_expired_handled = False
                 st.session_state.is_searching_match = False

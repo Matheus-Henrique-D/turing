@@ -123,44 +123,65 @@ class GameService:
     def confirm_round_ready(self, next_session_id: str, user_id: int) -> dict:
         """
         Handshake de transição entre rodadas multiplayer.
-        Cada jogador chama este método ao detectar que quer avançar.
-        Incrementa round_ready_ack atomicamente (máx 1 por usuário via campo).
+        Atualiza round_ready_ack ATOMICAMENTE no SQL via bitwise OR.
         Retorna {'all_ready': bool, 'ready_count': int}.
         O fluxo só avança quando all_ready=True (ambos confirmaram).
         """
         from core.database import get_db_connection
         with get_db_connection() as conn:
-            # Incrementa atomicamente somente se este user ainda não confirmou
-            # Usa user_id para controlar: player1 incrementa em +1, player2 em +1 separado
-            # Armazenamos o estado em dois campos separados para evitar overwrites
             sess_cur = conn.execute(
-                "SELECT * FROM game_sessions WHERE id = ?", (next_session_id,))
+                "SELECT user_id, player2_id FROM game_sessions WHERE id = ?", (next_session_id,))
             sess_row = sess_cur.fetchone()
             if not sess_row:
                 return {"all_ready": False, "ready_count": 0}
 
-            current_ack = sess_row["round_ready_ack"] if "round_ready_ack" in sess_row.keys() else 0
-            p1_id = sess_row["user_id"]
-            p2_id = sess_row["player2_id"]
+            bit = 1 if user_id == sess_row["user_id"] else (2 if user_id == sess_row["player2_id"] else 0)
+            if bit == 0:
+                return {"all_ready": False, "ready_count": 0}
 
-            # Determina a "posição" do user (bit 1 para player1, bit 2 para player2)
-            bit = 0
-            if user_id == p1_id:
-                bit = 1
-            elif user_id == p2_id:
-                bit = 2
+            # UPDATE atômico via SQL bitwise OR: nenhuma concorrência pode sobrescrever
+            conn.execute(
+                "UPDATE game_sessions SET round_ready_ack = (round_ready_ack | ?) WHERE id = ?",
+                (bit, next_session_id)
+            )
 
-            if bit and not (current_ack & bit):
-                new_ack = current_ack | bit
-                conn.execute(
-                    "UPDATE game_sessions SET round_ready_ack = ? WHERE id = ?",
-                    (new_ack, next_session_id))
-                current_ack = new_ack
+            check_cur = conn.execute(
+                "SELECT round_ready_ack FROM game_sessions WHERE id = ?", (next_session_id,))
+            check_row = check_cur.fetchone()
+            current_ack = check_row["round_ready_ack"] if check_row else 0
 
-        # all_ready quando bit1 e bit2 ambos setados (valor 3 = 0b11)
         all_ready = (current_ack & 3) == 3
         ready_count = bin(current_ack & 3).count("1")
         return {"all_ready": all_ready, "ready_count": ready_count}
+
+    def check_round_ready(self, next_session_id: str) -> dict:
+        """Consulta o estado atual do handshake da próxima rodada sem modificar."""
+        from core.database import get_db_connection
+        with get_db_connection() as conn:
+            check_cur = conn.execute(
+                "SELECT round_ready_ack FROM game_sessions WHERE id = ?", (next_session_id,))
+            check_row = check_cur.fetchone()
+            current_ack = check_row["round_ready_ack"] if check_row else 0
+
+        all_ready = (current_ack & 3) == 3
+        ready_count = bin(current_ack & 3).count("1")
+        return {"all_ready": all_ready, "ready_count": ready_count}
+
+    def confirm_round_migrated(self, next_session_id: str, user_id: int):
+        """Registra que este jogador já entrou na nova rodada, garantindo retenção de estado."""
+        from core.database import get_db_connection
+        with get_db_connection() as conn:
+            sess_cur = conn.execute(
+                "SELECT user_id, player2_id FROM game_sessions WHERE id = ?", (next_session_id,))
+            sess_row = sess_cur.fetchone()
+            if not sess_row:
+                return
+            bit = 1 if user_id == sess_row["user_id"] else (2 if user_id == sess_row["player2_id"] else 0)
+            if bit:
+                conn.execute(
+                    "UPDATE game_sessions SET round_migrated_ack = (round_migrated_ack | ?) WHERE id = ?",
+                    (bit, next_session_id)
+                )
 
     def get_session(self, session_id: str) -> Optional[GameSession]:
         return SessionRepository.get_by_id(session_id)
