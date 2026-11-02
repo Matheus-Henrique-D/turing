@@ -23,7 +23,8 @@ import uuid
 from core.database import get_db_connection
 from core.config import ROUND_TOPICS, STATUS_ACTIVE
 
-HEARTBEAT_TIMEOUT_SECONDS = 30
+HEARTBEAT_TIMEOUT_SECONDS = 5
+MATCH_HEARTBEAT_SECONDS = 3
 # Folga maior que antes (10s): os aparelhos consultam a cada 0.8s~2s e ainda
 # há animações com sleep, então 10s cancelava pareamentos legítimos.
 HANDSHAKE_TIMEOUT_SECONDS = 25.0
@@ -40,11 +41,7 @@ class MatchmakingService:
 
         with get_db_connection() as conn:
             conn.execute("BEGIN IMMEDIATE")
-            conn.execute("""
-            UPDATE matchmaking_queue
-            SET status = 'cancelled'
-            WHERE status = 'waiting' AND last_heartbeat < ?
-            """, (hb_threshold,))
+            conn.execute("DELETE FROM matchmaking_queue WHERE last_heartbeat < ?", (hb_threshold,))
 
             cur = conn.execute("""
             SELECT DISTINCT matched_session_id
@@ -68,7 +65,7 @@ class MatchmakingService:
 
     @staticmethod
     def get_waiting_count() -> int:
-        threshold = (datetime.now() - timedelta(seconds=HEARTBEAT_TIMEOUT_SECONDS)).isoformat()
+        threshold = (datetime.now() - timedelta(seconds=MATCH_HEARTBEAT_SECONDS)).isoformat()
         with get_db_connection() as conn:
             cursor = conn.execute("""
             SELECT COUNT(*) as total
@@ -107,11 +104,14 @@ class MatchmakingService:
         """
         cls.cleanup_stale_queue()
         now = datetime.now().isoformat()
-        threshold = (datetime.now() - timedelta(seconds=HEARTBEAT_TIMEOUT_SECONDS)).isoformat()
+        threshold = (datetime.now() - timedelta(seconds=MATCH_HEARTBEAT_SECONDS)).isoformat()
 
         with get_db_connection() as conn:
             # Serializa: só um aparelho por vez decide pareamentos
             conn.execute("BEGIN IMMEDIATE")
+
+            stale_threshold = (datetime.now() - timedelta(seconds=HEARTBEAT_TIMEOUT_SECONDS)).isoformat()
+            conn.execute("DELETE FROM matchmaking_queue WHERE last_heartbeat < ?", (stale_threshold,))
 
             cursor = conn.execute(
                 "SELECT * FROM matchmaking_queue WHERE user_id = ?", (user_id,))
@@ -186,7 +186,7 @@ class MatchmakingService:
         Retorna status: waiting | matched | ready_pending | all_ready
         """
         now = datetime.now().isoformat()
-        threshold = (datetime.now() - timedelta(seconds=HEARTBEAT_TIMEOUT_SECONDS)).isoformat()
+        threshold = (datetime.now() - timedelta(seconds=MATCH_HEARTBEAT_SECONDS)).isoformat()
 
         with get_db_connection() as conn:
             # BEGIN IMMEDIATE ANTES de qualquer escrita: impede que dois aparelhos

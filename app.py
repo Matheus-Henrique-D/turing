@@ -1346,6 +1346,7 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
 
     # ── ESTADO 2: LOBBY INICIAL (SEM PARTIDA ATIVA) ─────────────────────────────
     if not st.session_state.active_session_id:
+        MatchmakingService.leave_queue(user.id)
         waiting_players = MatchmakingService.get_waiting_count()
         queue_badge = f"🟢 {waiting_players} jogador(es) na fila" if waiting_players > 0 else "⚪ Fila vazia"
 
@@ -1895,21 +1896,15 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
                 st.session_state.round_transition_to = (rounds_done, rounds_done + 1)
                 if is_multiplayer:
                     # ── HANDSHAKE DE RODADA: Cria/busca a próxima sessão compartilhada
-                    next_round_sess = game_service.get_or_create_next_multiplayer_round(
-                        current_session,
-                        exclude_topics=st.session_state.past_round_topics
-                    )
-                    # Registra ACK deste jogador para a próxima rodada
-                    ack = game_service.confirm_round_ready(next_round_sess.id, user.id)
-                    if ack["all_ready"]:
-                        # Ambos prontos → avança imediatamente
-                        st.session_state.active_session_id = next_round_sess.id
+                    result = game_service.prepare_next_round_after_both_ready(
+                        current_session.id, user.id,
+                        exclude_topics=st.session_state.past_round_topics)
+                    if result["all_ready"]:
+                        st.session_state.active_session_id = result["session_id"]
                         st.session_state.round_number = rounds_done + 1
                         st.session_state.mp_round_pending_id = None
-                        game_service.confirm_round_migrated(next_round_sess.id, user.id)
                     else:
-                        # Salva o ID da próxima rodada e aguarda o par confirmar
-                        st.session_state.mp_round_pending_id = next_round_sess.id
+                        st.session_state.mp_round_pending_id = current_session.id
                         st.rerun()
                 else:
                     # Avança automaticamente no modo singleplayer / treino contra IA
@@ -1932,12 +1927,13 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
         # ── POLLING DO HANDSHAKE DE RODADA (multiplayer aguardando o par)
         mp_pending_id = st.session_state.get("mp_round_pending_id")
         if mp_pending_id and is_multiplayer:
-            ack_check = game_service.check_round_ready(mp_pending_id)
-            if ack_check["all_ready"]:
-                st.session_state.active_session_id = mp_pending_id
+            ack_check = game_service.prepare_next_round_after_both_ready(
+                mp_pending_id, user.id,
+                exclude_topics=st.session_state.past_round_topics)
+            if ack_check["all_ready"] and ack_check["session_id"]:
+                st.session_state.active_session_id = ack_check["session_id"]
                 st.session_state.round_number = rounds_done + 1
                 st.session_state.mp_round_pending_id = None
-                game_service.confirm_round_migrated(mp_pending_id, user.id)
                 st.session_state.turn_start_time = None
                 st.session_state.timer_expired_handled = False
                 st.session_state.is_searching_match = False

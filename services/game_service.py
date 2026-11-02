@@ -194,6 +194,46 @@ class GameService:
                     (bit, next_session_id)
                 )
 
+    def prepare_next_round_after_both_ready(self, previous_session_id: str, user_id: int,
+                                            exclude_topics: Optional[list] = None) -> dict:
+        """Hold each player at the finished round; create the next session only after both ACKs."""
+        import uuid
+        from datetime import datetime
+        from core.database import get_db_connection
+
+        with get_db_connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            old = conn.execute(
+                "SELECT user_id, player2_id, next_session_id, round_ready_ack FROM game_sessions WHERE id = ?",
+                (previous_session_id,)).fetchone()
+            if not old or not old["player2_id"]:
+                return {"all_ready": False, "session_id": None}
+            bit = 1 if user_id == old["user_id"] else (2 if user_id == old["player2_id"] else 0)
+            if not bit:
+                return {"all_ready": False, "session_id": None}
+            conn.execute("UPDATE game_sessions SET round_ready_ack = (round_ready_ack | ?) WHERE id = ?",
+                         (bit, previous_session_id))
+            mask = conn.execute("SELECT round_ready_ack FROM game_sessions WHERE id = ?",
+                                 (previous_session_id,)).fetchone()["round_ready_ack"] & 3
+            if mask != 3:
+                return {"all_ready": False, "session_id": None}
+
+            next_id = old["next_session_id"]
+            if not next_id:
+                topics = [t for t in ROUND_TOPICS if t not in (exclude_topics or [])] or ROUND_TOPICS
+                next_id = str(uuid.uuid4())
+                topic = random.choice(topics)
+                pretend_id = random.choice([old["user_id"], old["player2_id"]])
+                conn.execute("""INSERT INTO game_sessions
+                    (id, user_id, opponent_type, persona, topic, status, created_at,
+                     player2_id, is_multiplayer, pretend_ai_user_id, round_ready_ack, round_migrated_ack)
+                    VALUES (?, ?, 'HUMAN', 'jogador_real', ?, ?, ?, ?, 1, ?, 0, 0)""",
+                    (next_id, old["user_id"], topic, STATUS_ACTIVE, datetime.now().isoformat(),
+                     old["player2_id"], pretend_id))
+                conn.execute("UPDATE game_sessions SET next_session_id = ? WHERE id = ?",
+                             (next_id, previous_session_id))
+            return {"all_ready": True, "session_id": next_id}
+
     def get_session(self, session_id: str) -> Optional[GameSession]:
         return SessionRepository.get_by_id(session_id)
 
