@@ -1291,7 +1291,7 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
             st.stop()
 
         # ── TIMEOUT DO RADAR (20s): inicia contra IA para não travar o jogador
-        if elapsed >= 20.0:
+        if elapsed >= 20.0 and st.session_state.get("round_number", 0) != 1:
             MatchmakingService.leave_queue(user.id)
             current_r = st.session_state.get("round_number", 0) + 1
             new_session = game_service.start_new_game(
@@ -1315,7 +1315,7 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
 
         col_rc1, col_rc2 = st.columns(2)
         with col_rc1:
-            if st.button("⚡ JOGAR COM IA IMEDIATAMENTE", use_container_width=True):
+            if st.session_state.get("round_number", 0) != 1 and st.button("⚡ JOGAR COM IA IMEDIATAMENTE", use_container_width=True):
                 MatchmakingService.leave_queue(user.id)
                 current_r = st.session_state.get("round_number", 0) + 1
                 new_session = game_service.start_new_game(
@@ -1364,7 +1364,15 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
 
         col_b1, col_b2 = st.columns(2)
         with col_b1:
-            if st.button("🎮 BUSCAR PARTIDA (HUMANO OU IA)", type="primary", use_container_width=True):
+            if st.session_state.get("round_number", 0) == 0:
+                if st.button("🤖 INICIAR 1ª PARTIDA CONTRA IA", type="primary", use_container_width=True):
+                    MatchmakingService.leave_queue(user.id)
+                    first_game = game_service.start_new_game(user.id, round_number=1)
+                    st.session_state.active_session_id = first_game.id
+                    st.session_state.round_number = 1
+                    st.session_state.is_searching_match = False
+                    st.rerun()
+            elif st.button("🎮 BUSCAR OPONENTE HUMANO (2ª PARTIDA)", type="primary", use_container_width=True):
                 MatchmakingService.leave_queue(user.id)
                 MatchmakingService.join_queue(
                     user.id,
@@ -1377,7 +1385,7 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
                 st.rerun()
 
         with col_b2:
-            if st.button("🤖 TREINO RÁPIDO CONTRA IA", use_container_width=True):
+            if st.session_state.get("round_number", 0) != 1 and st.button("🤖 TREINO RÁPIDO CONTRA IA", use_container_width=True):
                 MatchmakingService.leave_queue(user.id)
                 current_r = st.session_state.get("round_number", 0) + 1
                 new_session = game_service.start_new_game(
@@ -1907,21 +1915,31 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
                         st.session_state.mp_round_pending_id = current_session.id
                         st.rerun()
                 else:
-                    # Avança automaticamente no modo singleplayer / treino contra IA
-                    next_round_sess = game_service.start_new_game(
-                        user.id,
-                        exclude_topics=st.session_state.past_round_topics,
-                        round_number=rounds_done + 1
-                    )
-                    st.session_state.active_session_id = next_round_sess.id
-                    st.session_state.round_number = rounds_done + 1
+                    if rounds_done == 1:
+                        MatchmakingService.leave_queue(user.id)
+                        MatchmakingService.join_queue(
+                            user.id, user.username,
+                            exclude_topics=st.session_state.past_round_topics)
+                        st.session_state.active_session_id = None
+                        st.session_state.is_searching_match = True
+                        st.session_state.match_search_start_time = time.time()
+                        st.session_state.round_number = 1
+                    else:
+                        next_round_sess = game_service.start_new_game(
+                            user.id,
+                            exclude_topics=st.session_state.past_round_topics,
+                            round_number=rounds_done + 1
+                        )
+                        st.session_state.active_session_id = next_round_sess.id
+                        st.session_state.round_number = rounds_done + 1
             else:
                 st.session_state.show_final_scoreboard = True
                 st.session_state.active_session_id = None
 
             st.session_state.turn_start_time = None
             st.session_state.timer_expired_handled = False
-            st.session_state.is_searching_match = False
+            if not (rounds_done == 1 and not is_multiplayer):
+                st.session_state.is_searching_match = False
             st.rerun()
 
         # ── POLLING DO HANDSHAKE DE RODADA (multiplayer aguardando o par)
