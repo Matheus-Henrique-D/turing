@@ -138,13 +138,18 @@ class SessionRepository:
     @staticmethod
     def record_vote(session_id: str, user_guess: str, is_win: bool, user_id: Optional[int] = None) -> bool:
         now = datetime.now().isoformat()
-        session = SessionRepository.get_by_id(session_id)
-        if not session:
-            return False
 
         with get_db_connection() as conn:
-            if session.is_multiplayer and user_id is not None:
-                if user_id == session.player2_id:
+            # Lock de escrita: os dois votos nunca se atropelam.
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute(
+                "SELECT is_multiplayer, player2_id FROM game_sessions WHERE id = ?",
+                (session_id,)).fetchone()
+            if not row:
+                return False
+
+            if row["is_multiplayer"] and user_id is not None:
+                if user_id == row["player2_id"]:
                     conn.execute("""
                     UPDATE game_sessions
                     SET player2_guess = ?, player2_is_win = ?
@@ -157,22 +162,26 @@ class SessionRepository:
                     WHERE id = ?
                     """, (user_guess, 1 if is_win else 0, session_id))
 
-                # Se ambos já votaram, finaliza a sessão
-                updated = SessionRepository.get_by_id(session_id)
-                if updated and updated.user_guess is not None and updated.player2_guess is not None:
+                # Verifica na MESMA conexão: antes lia por outra conexão e não via o
+                # voto recém-escrito (ainda não commitado), então a sessão nunca
+                # chegava a 'finished' e os dois jogadores ficavam presos na votação.
+                chk = conn.execute(
+                    "SELECT user_guess, player2_guess FROM game_sessions WHERE id = ?",
+                    (session_id,)).fetchone()
+                if chk and chk["user_guess"] is not None and chk["player2_guess"] is not None:
                     conn.execute("""
                     UPDATE game_sessions
                     SET status = ?, finished_at = ?
                     WHERE id = ?
                     """, (STATUS_FINISHED, now, session_id))
                 return True
-            else:
-                cursor = conn.execute("""
-                UPDATE game_sessions
-                SET status = ?, user_guess = ?, is_win = ?, finished_at = ?
-                WHERE id = ?
-                """, (STATUS_FINISHED, user_guess, 1 if is_win else 0, now, session_id))
-                return cursor.rowcount > 0
+
+            cursor = conn.execute("""
+            UPDATE game_sessions
+            SET status = ?, user_guess = ?, is_win = ?, finished_at = ?
+            WHERE id = ?
+            """, (STATUS_FINISHED, user_guess, 1 if is_win else 0, now, session_id))
+            return cursor.rowcount > 0
 
     @staticmethod
     def set_next_session(session_id: str, next_session_id: str) -> bool:
@@ -189,7 +198,7 @@ class SessionRepository:
     def get_stats_for_user(user_id: int) -> dict:
         with get_db_connection() as conn:
             cursor = conn.execute("""
-            SELECT 
+            SELECT
                 COUNT(*) as total_games,
                 SUM(CASE
                     WHEN user_id = ? AND is_win = 1 THEN 1
@@ -210,7 +219,7 @@ class SessionRepository:
     def get_global_stats() -> dict:
         with get_db_connection() as conn:
             cursor = conn.execute("""
-            SELECT 
+            SELECT
                 COUNT(*) as total_games,
                 SUM(CASE WHEN is_win = 1 THEN 1 ELSE 0 END) as total_wins,
                 SUM(CASE WHEN opponent_type = 'AI' AND is_win = 1 THEN 1 ELSE 0 END) as ai_detected,

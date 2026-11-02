@@ -91,34 +91,45 @@ class GameService:
         Garante que a próxima rodada da mesma dupla multijogador seja criada de forma única.
         Se o parceiro já criou a próxima sessão, retorna ela. Caso contrário, cria e vincula.
         """
-        refreshed = SessionRepository.get_by_id(previous_session.id)
-        if refreshed and refreshed.next_session_id:
-            next_sess = SessionRepository.get_by_id(refreshed.next_session_id)
-            if next_sess:
-                return next_sess
+        import uuid
+        from datetime import datetime
+        from core.database import get_db_connection
 
         available_topics = [t for t in ROUND_TOPICS if t not in (exclude_topics or [])]
         if not available_topics:
             available_topics = ROUND_TOPICS
         topic = random.choice(available_topics)
 
-        # Alterna ou sorteia novamente a missão secreta para a nova rodada
         p_ids = [previous_session.user_id]
         if previous_session.player2_id:
             p_ids.append(previous_session.player2_id)
         pretend_id = random.choice(p_ids)
 
-        new_sess = SessionRepository.create(
-            user_id=previous_session.user_id,
-            opponent_type="HUMAN",
-            persona="jogador_real",
-            topic=topic,
-            player2_id=previous_session.player2_id,
-            is_multiplayer=True,
-            pretend_ai_user_id=pretend_id
-        )
-        SessionRepository.set_next_session(previous_session.id, new_sess.id)
-        return new_sess
+        # Verificação + criação + vínculo numa única transação com lock de escrita.
+        # Antes, os dois aparelhos podiam criar uma sessão cada (corrida), e cada
+        # jogador ficava esperando o ACK numa sessão diferente: um avançava, o outro não.
+        new_id = None
+        with get_db_connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute(
+                "SELECT next_session_id FROM game_sessions WHERE id = ?",
+                (previous_session.id,)).fetchone()
+            if row and row["next_session_id"]:
+                new_id = row["next_session_id"]
+            else:
+                new_id = str(uuid.uuid4())
+                conn.execute("""
+                INSERT INTO game_sessions
+                    (id, user_id, opponent_type, persona, topic, status, created_at,
+                     player2_id, is_multiplayer, pretend_ai_user_id,
+                     round_ready_ack, round_migrated_ack)
+                VALUES (?, ?, 'HUMAN', 'jogador_real', ?, ?, ?, ?, 1, ?, 0, 0)
+                """, (new_id, previous_session.user_id, topic, STATUS_ACTIVE,
+                      datetime.now().isoformat(), previous_session.player2_id, pretend_id))
+                conn.execute(
+                    "UPDATE game_sessions SET next_session_id = ? WHERE id = ?",
+                    (new_id, previous_session.id))
+        return SessionRepository.get_by_id(new_id)
 
     def confirm_round_ready(self, next_session_id: str, user_id: int) -> dict:
         """
