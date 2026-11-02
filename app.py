@@ -753,6 +753,8 @@ if "round_transition_to" not in st.session_state:
     st.session_state.round_transition_to = None
 if "round_finished_at" not in st.session_state:
     st.session_state.round_finished_at = None
+if "mp_round_pending_id" not in st.session_state:
+    st.session_state.mp_round_pending_id = None
 
 
 
@@ -1230,17 +1232,31 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
         elapsed = time.time() - (st.session_state.match_search_start_time or time.time())
         waiting_count = MatchmakingService.get_waiting_count()
 
-        # Consulta periodicamente se foi pareado
+        # Consulta periodicamente o estado do par e do handshake duplo
         poll_res = MatchmakingService.poll_queue_status(
             user.id,
             user.username,
             exclude_topics=st.session_state.past_round_topics
         )
+        poll_status = poll_res.get("status", "waiting")
+        poll_session_id = poll_res.get("session_id")
 
-        if poll_res["status"] == "matched" and poll_res.get("session_id"):
+        # ── HANDSHAKE: Par encontrado → confirmar que este dispositivo está pronto
+        if poll_status == "matched" and poll_session_id:
+            # Registra o ACK deste dispositivo no banco (operação idempotente)
+            ack_res = MatchmakingService.confirm_ready(user.id, poll_session_id)
+            if ack_res["all_ready"]:
+                # Ambos confirmaram → transição simultânea
+                poll_status = "all_ready"
+            else:
+                # Só este confirmou → aguardar o par (mantém tela de radar)
+                poll_status = "ready_pending"
+
+        # ── TRANSIÇÃO: Somente quando AMBOS confirmaram (ou timeout forçou avanço)
+        if poll_status == "all_ready" and poll_session_id:
             render_match_found_animation()
             time.sleep(2.0)
-            st.session_state.active_session_id = poll_res["session_id"]
+            st.session_state.active_session_id = poll_session_id
             st.session_state.is_searching_match = False
             st.session_state.round_number = st.session_state.get("round_number", 0) + 1
             st.session_state.turn_start_time = None
@@ -1249,7 +1265,26 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
             st.session_state.turn_limit_seconds = 45
             st.rerun()
 
-        # Timeout do radar (20s): inicia contra IA para não travar o jogador
+        # ── AGUARDANDO O PAR CONFIRMAR O HANDSHAKE
+        if poll_status == "ready_pending":
+            st.markdown("""
+            <div style="text-align:center; padding:18px; background:var(--bg-card);
+                        border:2px solid var(--neon-green); border-radius:8px; margin-bottom:14px;
+                        box-shadow: 0 0 24px rgba(0,255,85,0.25);">
+                <div style="font-family:var(--font-pixel); font-size:1.4rem;
+                            color:var(--neon-green); margin-bottom:8px;">
+                    ✅ CONEXÃO ESTABELECIDA!
+                </div>
+                <div style="color:var(--muted); font-size:0.95rem;">
+                    Aguardando o outro dispositivo sincronizar...
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            if _HAS_AUTOREFRESH:
+                st_autorefresh(interval=800, key="handshake_sync_refresh")
+            st.stop()
+
+        # ── TIMEOUT DO RADAR (20s): inicia contra IA para não travar o jogador
         if elapsed >= 20.0:
             MatchmakingService.leave_queue(user.id)
             current_r = st.session_state.get("round_number", 0) + 1
@@ -1269,7 +1304,7 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
                 st.session_state.past_round_topics.append(new_session.topic)
             st.rerun()
 
-        # Renderiza animação do Radar
+        # Renderiza animação do Radar (ainda buscando)
         render_matchmaking_radar(elapsed, timeout_seconds=20, waiting_count=waiting_count)
 
         col_rc1, col_rc2 = st.columns(2)
@@ -1849,13 +1884,22 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
             if rounds_done < 3:
                 st.session_state.round_transition_to = (rounds_done, rounds_done + 1)
                 if is_multiplayer:
-                    # Conecta automaticamente à próxima rodada compartilhada da mesma dupla
+                    # ── HANDSHAKE DE RODADA: Cria/busca a próxima sessão compartilhada
                     next_round_sess = game_service.get_or_create_next_multiplayer_round(
                         current_session,
                         exclude_topics=st.session_state.past_round_topics
                     )
-                    st.session_state.active_session_id = next_round_sess.id
-                    st.session_state.round_number = rounds_done + 1
+                    # Registra ACK deste jogador para a próxima rodada
+                    ack = game_service.confirm_round_ready(next_round_sess.id, user.id)
+                    if ack["all_ready"]:
+                        # Ambos prontos → avança imediatamente
+                        st.session_state.active_session_id = next_round_sess.id
+                        st.session_state.round_number = rounds_done + 1
+                        st.session_state.mp_round_pending_id = None
+                    else:
+                        # Salva o ID da próxima rodada e aguarda o par confirmar
+                        st.session_state.mp_round_pending_id = next_round_sess.id
+                        # NÃO avança ainda — o polling abaixo cuidará disso
                 else:
                     # Avança automaticamente no modo singleplayer / treino contra IA
                     next_round_sess = game_service.start_new_game(
@@ -1874,6 +1918,35 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
             st.session_state.is_searching_match = False
             st.rerun()
 
+        # ── POLLING DO HANDSHAKE DE RODADA (multiplayer aguardando o par)
+        mp_pending_id = st.session_state.get("mp_round_pending_id")
+        if mp_pending_id and is_multiplayer:
+            ack_check = game_service.confirm_round_ready(mp_pending_id, user.id)
+            if ack_check["all_ready"]:
+                st.session_state.active_session_id = mp_pending_id
+                st.session_state.round_number = rounds_done + 1
+                st.session_state.mp_round_pending_id = None
+                st.session_state.turn_start_time = None
+                st.session_state.timer_expired_handled = False
+                st.session_state.is_searching_match = False
+                st.rerun()
+            else:
+                st.markdown("""
+                <div style="text-align:center; padding:14px; background:var(--bg-card);
+                            border:2px solid var(--neon-green); border-radius:6px; margin-bottom:12px;
+                            box-shadow: 0 0 20px rgba(0,255,85,0.2);">
+                    <div style="font-family:var(--font-pixel); color:var(--neon-green); font-size:1.2rem;">
+                        ✅ VOCÊ ESTÁ PRONTO!
+                    </div>
+                    <div style="color:var(--muted); font-size:0.9rem; margin-top:6px;">
+                        Aguardando o outro jogador confirmar a próxima rodada...
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+                if _HAS_AUTOREFRESH:
+                    st_autorefresh(interval=800, key=f"mp_round_ack_poll_{mp_pending_id}")
+                st.stop()
+
         # Disparo manual ou automático após 5 segundos
         manual_clicked = st.button(btn_label, use_container_width=True, type="primary")
         if manual_clicked or (time_in_result >= auto_advance_seconds):
@@ -1882,6 +1955,7 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
         # Autorefresh suave a cada 1s enquanto conta os 5 segundos do resultado
         if _HAS_AUTOREFRESH and time_in_result < auto_advance_seconds:
             st_autorefresh(interval=1000, key=f"result_auto_advance_{current_session.id}")
+
 
 
 # ==============================================================================

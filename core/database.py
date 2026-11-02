@@ -75,7 +75,8 @@ def init_db():
             "player2_is_win INTEGER NULL",
             "is_multiplayer INTEGER DEFAULT 0",
             "pretend_ai_user_id INTEGER NULL",
-            "next_session_id TEXT NULL"
+            "next_session_id TEXT NULL",
+            "round_ready_ack INTEGER NOT NULL DEFAULT 0"
         ]:
             try:
                 cursor.execute(f"ALTER TABLE game_sessions ADD COLUMN {col_def};")
@@ -94,6 +95,11 @@ def init_db():
             last_heartbeat TEXT NOT NULL
         );
         """)
+        # Migração segura: adiciona coluna de handshake se ainda não existir
+        try:
+            cursor.execute("ALTER TABLE matchmaking_queue ADD COLUMN ready_ack INTEGER NOT NULL DEFAULT 0;")
+        except Exception:
+            pass
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_matchmaking_status ON matchmaking_queue(status);")
         
         # Tabela de Mensagens

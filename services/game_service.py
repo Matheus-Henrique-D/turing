@@ -120,6 +120,48 @@ class GameService:
         SessionRepository.set_next_session(previous_session.id, new_sess.id)
         return new_sess
 
+    def confirm_round_ready(self, next_session_id: str, user_id: int) -> dict:
+        """
+        Handshake de transição entre rodadas multiplayer.
+        Cada jogador chama este método ao detectar que quer avançar.
+        Incrementa round_ready_ack atomicamente (máx 1 por usuário via campo).
+        Retorna {'all_ready': bool, 'ready_count': int}.
+        O fluxo só avança quando all_ready=True (ambos confirmaram).
+        """
+        from core.database import get_db_connection
+        with get_db_connection() as conn:
+            # Incrementa atomicamente somente se este user ainda não confirmou
+            # Usa user_id para controlar: player1 incrementa em +1, player2 em +1 separado
+            # Armazenamos o estado em dois campos separados para evitar overwrites
+            sess_cur = conn.execute(
+                "SELECT * FROM game_sessions WHERE id = ?", (next_session_id,))
+            sess_row = sess_cur.fetchone()
+            if not sess_row:
+                return {"all_ready": False, "ready_count": 0}
+
+            current_ack = sess_row["round_ready_ack"] if "round_ready_ack" in sess_row.keys() else 0
+            p1_id = sess_row["user_id"]
+            p2_id = sess_row["player2_id"]
+
+            # Determina a "posição" do user (bit 1 para player1, bit 2 para player2)
+            bit = 0
+            if user_id == p1_id:
+                bit = 1
+            elif user_id == p2_id:
+                bit = 2
+
+            if bit and not (current_ack & bit):
+                new_ack = current_ack | bit
+                conn.execute(
+                    "UPDATE game_sessions SET round_ready_ack = ? WHERE id = ?",
+                    (new_ack, next_session_id))
+                current_ack = new_ack
+
+        # all_ready quando bit1 e bit2 ambos setados (valor 3 = 0b11)
+        all_ready = (current_ack & 3) == 3
+        ready_count = bin(current_ack & 3).count("1")
+        return {"all_ready": all_ready, "ready_count": ready_count}
+
     def get_session(self, session_id: str) -> Optional[GameSession]:
         return SessionRepository.get_by_id(session_id)
 
