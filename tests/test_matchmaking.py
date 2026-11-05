@@ -52,6 +52,20 @@ class TestMatchmaking(unittest.TestCase):
         self.assertEqual(session.player2_id, 201)
         self.assertIn(session.pretend_ai_user_id, [201, 202])
 
+        # 5. Ambos os jogadores (201 e 202) devem conseguir recuperar a sessão ativa pelo banco
+        p1_active = SessionRepository.get_active_session_for_user(201)
+        p2_active = SessionRepository.get_active_session_for_user(202)
+        self.assertIsNotNone(p1_active)
+        self.assertIsNotNone(p2_active)
+        self.assertEqual(p1_active.id, session.id)
+        self.assertEqual(p2_active.id, session.id)
+
+        # 6. Ambos os jogadores devem ver a partida em seu histórico list_by_user
+        p1_list = SessionRepository.list_by_user(201)
+        p2_list = SessionRepository.list_by_user(202)
+        self.assertTrue(any(s.id == session.id for s in p1_list))
+        self.assertTrue(any(s.id == session.id for s in p2_list))
+
     def test_leave_queue(self):
         MatchmakingService.join_queue(user_id=203, username="player_gamma")
         self.assertGreaterEqual(MatchmakingService.get_waiting_count(), 1)

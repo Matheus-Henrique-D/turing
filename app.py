@@ -1298,6 +1298,15 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
             st_autorefresh(interval=2000, key="matchmaking_radar_refresh")
         st.stop()
 
+    # ── RECUPERAÇÃO AUTOMÁTICA DE SESSÃO ATIVA (MULTIJOGADOR OU RECONEXÃO) ──────
+    if not st.session_state.get("active_session_id") and not st.session_state.get("is_searching_match", False):
+        active_mp_session = SessionRepository.get_active_session_for_user(user.id)
+        if active_mp_session and active_mp_session.status in (STATUS_ACTIVE, STATUS_VOTING):
+            st.session_state.active_session_id = active_mp_session.id
+            st.session_state.is_searching_match = False
+            st.session_state.turn_start_time = None
+            st.rerun()
+
     # ── ESTADO 2: LOBBY INICIAL (SEM PARTIDA ATIVA) ─────────────────────────────
     if not st.session_state.active_session_id:
         MatchmakingService.leave_queue(user.id)
@@ -1318,33 +1327,36 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
 
         col_b1, col_b2 = st.columns(2)
         with col_b1:
-            if st.session_state.get("round_number", 0) == 0:
-                if st.button("🤖 INICIAR 1ª PARTIDA CONTRA IA", type="primary", use_container_width=True):
-                    MatchmakingService.leave_queue(user.id)
-                    first_game = game_service.start_new_game(user.id, round_number=1)
-                    st.session_state.active_session_id = first_game.id
-                    st.session_state.round_number = 1
-                    st.session_state.is_searching_match = False
-                    st.rerun()
-            elif st.button("🎮 BUSCAR OPONENTE HUMANO (2ª PARTIDA)", type="primary", use_container_width=True):
+            btn_mp_label = (
+                f"🎮 JOGAR CONTRA OUTRO JOGADOR ({waiting_players} NA FILA!)"
+                if waiting_players > 0
+                else "🎮 JOGAR CONTRA OUTRO JOGADOR (ONLINE)"
+            )
+            if st.button(btn_mp_label, type="primary", use_container_width=True):
                 MatchmakingService.leave_queue(user.id)
-                MatchmakingService.join_queue(
+                join_res = MatchmakingService.join_queue(
                     user.id,
                     user.username,
-                    exclude_topics=st.session_state.past_round_topics
+                    exclude_topics=st.session_state.get("past_round_topics", [])
                 )
-                st.session_state.is_searching_match = True
-                st.session_state.match_search_start_time = time.time()
-                st.session_state.active_session_id = None
+                if join_res.get("status") == "matched" and join_res.get("session_id"):
+                    st.session_state.active_session_id = join_res["session_id"]
+                    st.session_state.is_searching_match = False
+                    st.session_state.round_number = max(1, st.session_state.get("round_number", 0) + 1)
+                    st.session_state.turn_start_time = None
+                else:
+                    st.session_state.is_searching_match = True
+                    st.session_state.match_search_start_time = time.time()
+                    st.session_state.active_session_id = None
                 st.rerun()
 
         with col_b2:
-            if st.session_state.get("round_number", 0) != 1 and st.button("🤖 TREINO RÁPIDO CONTRA IA", use_container_width=True):
+            if st.button("🤖 JOGAR CONTRA IA (MODO SOLO)", use_container_width=True):
                 MatchmakingService.leave_queue(user.id)
                 current_r = st.session_state.get("round_number", 0) + 1
                 new_session = game_service.start_new_game(
                     user.id,
-                    exclude_topics=st.session_state.past_round_topics,
+                    exclude_topics=st.session_state.get("past_round_topics", []),
                     round_number=current_r
                 )
                 st.session_state.active_session_id = new_session.id
@@ -1357,6 +1369,10 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
                 if new_session.topic:
                     st.session_state.past_round_topics.append(new_session.topic)
                 st.rerun()
+
+        # Atualiza a contagem de jogadores na fila automaticamente a cada 3s
+        if _HAS_AUTOREFRESH:
+            st_autorefresh(interval=3000, key="lobby_queue_refresh")
 
         # Painel estatístico estilizado estilo arcade
         stats = game_service.get_user_statistics(user.id)
@@ -1539,34 +1555,16 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
                 if len(messages) > 0 and messages[-1].sender_name == user.username:
                     is_my_turn = False
 
-            # Reset do timer ao iniciar a vez do jogador
             if is_my_turn:
-                if st.session_state.get("turn_index_at_start", 0) != my_turn_count:
-                    st.session_state.turn_start_time = time.time()
-                    st.session_state.turn_index_at_start = my_turn_count
-                    st.session_state.timer_expired_handled = False
-                    st.session_state.turn_limit_seconds = 45
-
-                elapsed = time.time() - (st.session_state.get("turn_start_time") or time.time())
-                limit = st.session_state.get("turn_limit_seconds", 45)
-
-                # 1. Captura o input PRIMEIRO (antes de qualquer autorefresh)
+                # ── PRIORIDADE MÁXIMA: Captura do input do jogador ────────────────
                 user_input = st.chat_input("Digite sua mensagem para o interlocutor misterioso...")
 
-                # 2. Timer HUD
-                render_timer_hud(elapsed, limit)
-
-                # 3. Autorefresh do timer — só roda quando não há input sendo processado
-                if _HAS_AUTOREFRESH and not user_input:
-                    st_autorefresh(interval=1000, key="timer_live_refresh")
-
-                # 4. Alerta de tempo expirado
-                if elapsed >= limit:
-                    st.caption("⏱️ **Tempo sugerido expirado.** Finalize sua mensagem e pressione Enter para enviar.")
-
-
+                # GATILHO IMEDIATO DE TURNO: Se houver input, processa e faz rerun limpo
+                # NENHUM autorefresh ou cálculo de timer roda neste ciclo para evitar cancelamento do envio
                 if user_input and user_input.strip():
                     clean_input = user_input.strip()
+                    st.session_state.turn_start_time = time.time()
+                    st.session_state.timer_expired_handled = False
 
                     if is_multiplayer:
                         game_service.send_user_message(
@@ -1574,11 +1572,8 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
                             user.username,
                             clean_input,
                         )
-                        st.session_state.turn_start_time = time.time()
-                        st.session_state.timer_expired_handled = False
                         st.rerun()
                     else:
-                        # Singleplayer contra IA: Salva mensagem do jogador e renderiza imediatamente
                         from models.message import MessageRepository
                         from models.session import SessionRepository
                         MessageRepository.create(
@@ -1587,18 +1582,15 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
                             sender_name=user.username,
                             content=clean_input,
                         )
-                        st.session_state.turn_start_time = time.time()
-                        st.session_state.timer_expired_handled = False
 
                         # Exibe a mensagem enviada na hora
                         render_chat_bubble(clean_input, role="user")
 
-                        # Simula tempo realista de leitura e digitação humana (7 a 11 segundos)
+                        # Simula tempo realista de digitação humana
                         typing_placeholder = st.empty()
                         with typing_placeholder:
                             render_typing_indicator()
 
-                        # Gera a resposta do oponente
                         all_msgs = MessageRepository.list_by_session(current_session.id)
                         history_payload = [{"role": m.sender_type, "content": m.content} for m in all_msgs]
                         try:
@@ -1612,10 +1604,9 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
                         except Exception:
                             reply_text = "opa, e aí? tudo certo por aqui"
 
-                        time.sleep(random.uniform(7.0, 11.0))
+                        time.sleep(random.uniform(4.0, 7.0))
                         typing_placeholder.empty()
 
-                        # Salva resposta do interlocutor
                         sender_tag = "simulated_human" if current_session.opponent_type == "HUMAN" else "ai"
                         MessageRepository.create(
                             session_id=current_session.id,
@@ -1624,12 +1615,31 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
                             content=reply_text,
                         )
 
-                        # Verifica limite de turnos
                         user_turn_msgs = [m for m in MessageRepository.list_by_session(current_session.id) if m.sender_name == user.username]
                         if len(user_turn_msgs) >= MAX_TURNS_PER_GAME:
                             SessionRepository.update_status(current_session.id, STATUS_VOTING)
 
                         st.rerun()
+
+                # ── RELÓGIO & AUTOREFRESH: Só executam quando o usuário não enviou mensagem ──
+                if st.session_state.get("turn_index_at_start", 0) != my_turn_count:
+                    st.session_state.turn_start_time = time.time()
+                    st.session_state.turn_index_at_start = my_turn_count
+                    st.session_state.timer_expired_handled = False
+                    st.session_state.turn_limit_seconds = 45
+
+                elapsed = time.time() - (st.session_state.get("turn_start_time") or time.time())
+                limit = st.session_state.get("turn_limit_seconds", 45)
+
+                render_timer_hud(elapsed, limit)
+
+                if elapsed >= limit:
+                    st.caption("⏱️ **Tempo sugerido expirado.** Finalize sua mensagem e pressione Enter para enviar.")
+
+                # Autorefresh exclusivo para atualização do relógio quando ocioso
+                if _HAS_AUTOREFRESH:
+                    st_autorefresh(interval=1000, key=f"timer_live_{current_session.id}_{my_turn_count}")
+
             else:
                 # Oponente está digitando (esperando resposta no Multijogador)
                 st.markdown("""
@@ -1639,14 +1649,32 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
                 </div>
                 """, unsafe_allow_html=True)
                 render_typing_indicator()
-                # Autorefresh APENAS quando esperando o oponente — não interfere no input do jogador
+                # Autorefresh APENAS quando esperando o oponente responder
                 if _HAS_AUTOREFRESH:
-                    st_autorefresh(interval=2000, key="chat_sync_refresh")
+                    st_autorefresh(interval=2000, key=f"chat_sync_{current_session.id}_{len(messages)}")
 
         else:
-            # 5 turnos finalizados -> avança para a votação
-            SessionRepository.update_status(current_session.id, STATUS_VOTING)
-            st.rerun()
+            if is_multiplayer:
+                # No multijogador, o jogador atual completou suas 5 mensagens.
+                # Só avança a sessão para votação se o oponente também tiver completado as dele.
+                peer_msgs = [m for m in messages if m.sender_name != user.username and m.sender_type == "user"]
+                if len(peer_msgs) >= MAX_TURNS_PER_GAME:
+                    SessionRepository.update_status(current_session.id, STATUS_VOTING)
+                    st.rerun()
+                else:
+                    st.markdown("""
+                    <div class="turn-wait-banner">
+                        <span>⏳</span>
+                        <span><b>Você concluiu suas 5 mensagens!</b> Aguardando o outro jogador enviar a mensagem final dele...</span>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    render_typing_indicator()
+                    if _HAS_AUTOREFRESH:
+                        st_autorefresh(interval=2000, key="chat_sync_wait_peer_turns")
+            else:
+                # 5 turnos finalizados (singleplayer) -> avança para a votação
+                SessionRepository.update_status(current_session.id, STATUS_VOTING)
+                st.rerun()
 
     # ── 2. Votação ─────────────────────────────────────────────────────────────
     elif current_session.status == STATUS_VOTING:

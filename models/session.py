@@ -95,14 +95,38 @@ class SessionRepository:
             return GameSession.from_row(row) if row else None
 
     @staticmethod
+    def get_active_session_for_user(user_id: int) -> Optional[GameSession]:
+        """Busca sessão ativa recente onde o usuário é jogador 1 ou jogador 2."""
+        with get_db_connection() as conn:
+            cursor = conn.execute("""
+            SELECT * FROM game_sessions
+            WHERE (user_id = ? OR player2_id = ?)
+              AND status IN ('active', 'voting')
+            ORDER BY created_at DESC
+            LIMIT 1
+            """, (user_id, user_id))
+            row = cursor.fetchone()
+            if not row:
+                return None
+            sess = GameSession.from_row(row)
+            try:
+                dt = datetime.fromisoformat(sess.created_at)
+                # Se for sessão com mais de 30 minutos sem finalização, ignora para não prender eternamente
+                if (datetime.now() - dt).total_seconds() > 1800:
+                    return None
+            except Exception:
+                pass
+            return sess
+
+    @staticmethod
     def list_by_user(user_id: int, limit: int = 50) -> list[GameSession]:
         with get_db_connection() as conn:
             cursor = conn.execute("""
             SELECT * FROM game_sessions
-            WHERE user_id = ?
+            WHERE user_id = ? OR player2_id = ?
             ORDER BY created_at DESC
             LIMIT ?
-            """, (user_id, limit))
+            """, (user_id, user_id, limit))
             return [GameSession.from_row(row) for row in cursor.fetchall()]
 
     @staticmethod
