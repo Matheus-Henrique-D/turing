@@ -1300,7 +1300,26 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
 
     # ── RECUPERAÇÃO AUTOMÁTICA DE SESSÃO ATIVA (MULTIJOGADOR OU RECONEXÃO) ──────
     if not st.session_state.get("active_session_id") and not st.session_state.get("is_searching_match", False):
-        active_mp_session = SessionRepository.get_active_session_for_user(user.id)
+        active_mp_session = None
+        if hasattr(SessionRepository, "get_active_session_for_user"):
+            active_mp_session = SessionRepository.get_active_session_for_user(user.id)
+        else:
+            try:
+                from core.database import get_db_connection
+                with get_db_connection() as conn:
+                    cursor = conn.execute("""
+                    SELECT * FROM game_sessions
+                    WHERE (user_id = ? OR player2_id = ?)
+                      AND status IN ('active', 'voting')
+                    ORDER BY created_at DESC
+                    LIMIT 1
+                    """, (user.id, user.id))
+                    row = cursor.fetchone()
+                    if row:
+                        active_mp_session = GameSession.from_row(row)
+            except Exception:
+                active_mp_session = None
+
         if active_mp_session and active_mp_session.status in (STATUS_ACTIVE, STATUS_VOTING):
             st.session_state.active_session_id = active_mp_session.id
             st.session_state.is_searching_match = False
