@@ -760,6 +760,7 @@ GLOBAL_SESSION_DEFAULTS = {
     "round_finished_at": None,
     "mp_round_pending_id": None,
     "rules_accepted": False,
+    "user_abandoned_session": False,
 }
 
 for _k, _default in GLOBAL_SESSION_DEFAULTS.items():
@@ -1265,7 +1266,7 @@ else:
 if selected_view == "🎮 Jogar (Teste de Turing)":
     # Barra superior com identificação do jogador e botão de logout (quando a sidebar está oculta)
     if user.role == ROLE_USUARIO:
-        col_hdr1, col_hdr2 = st.columns([5, 1])
+        col_hdr1, col_hdr2 = st.columns([4, 2])
         with col_hdr1:
             st.markdown(
                 f"<div style='display:flex; align-items:center; gap:8px; padding-top:4px; font-size:0.95rem; color:var(--muted);'>"
@@ -1275,12 +1276,25 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
                 unsafe_allow_html=True,
             )
         with col_hdr2:
-            if st.button("🚪 Sair", key="player_top_logout", use_container_width=True):
-                st.session_state.current_user = None
-                st.session_state.active_session_id = None
-                st.session_state.turn_start_time = None
-                st.session_state.rules_accepted = False
-                st.rerun()
+            sub_col_exit, sub_col_logout = st.columns(2)
+            with sub_col_exit:
+                if st.button("🚪 Sair", key="player_top_exit_to_lobby", help="Voltar para a tela de buscar partida", use_container_width=True):
+                    MatchmakingService.leave_queue(user.id)
+                    st.session_state.is_searching_match = False
+                    st.session_state.active_session_id = None
+                    st.session_state.turn_start_time = None
+                    st.session_state.user_abandoned_session = True
+                    st.session_state.show_final_scoreboard = False
+                    st.session_state.round_transition_to = None
+                    st.rerun()
+            with sub_col_logout:
+                if st.button("🔒 Logout", key="player_top_logout", help="Desconectar sua conta", use_container_width=True):
+                    st.session_state.current_user = None
+                    st.session_state.active_session_id = None
+                    st.session_state.turn_start_time = None
+                    st.session_state.rules_accepted = False
+                    st.session_state.user_abandoned_session = False
+                    st.rerun()
         st.markdown("<div style='border-bottom: 1px solid var(--line); margin-bottom: 18px;'></div>", unsafe_allow_html=True)
 
     st.markdown("<div class='main-header'>HUMAN OR NOT?</div>", unsafe_allow_html=True)
@@ -1397,7 +1411,7 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
         st.stop()
 
     # ── RECUPERAÇÃO AUTOMÁTICA DE SESSÃO ATIVA (MULTIJOGADOR OU RECONEXÃO) ──────
-    if not st.session_state.get("active_session_id") and not st.session_state.get("is_searching_match", False):
+    if not st.session_state.get("active_session_id") and not st.session_state.get("is_searching_match", False) and not st.session_state.get("user_abandoned_session", False):
         active_mp_session = None
         if hasattr(SessionRepository, "get_active_session_for_user"):
             active_mp_session = SessionRepository.get_active_session_for_user(user.id)
@@ -1450,6 +1464,7 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
                 else "🎮 JOGAR CONTRA OUTRO JOGADOR (ONLINE)"
             )
             if st.button(btn_mp_label, type="primary", use_container_width=True):
+                st.session_state.user_abandoned_session = False
                 MatchmakingService.leave_queue(user.id)
                 join_res = MatchmakingService.join_queue(
                     user.id,
@@ -1469,6 +1484,7 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
 
         with col_b2:
             if st.button("🤖 JOGAR CONTRA IA (MODO SOLO)", use_container_width=True):
+                st.session_state.user_abandoned_session = False
                 MatchmakingService.leave_queue(user.id)
                 current_r = st.session_state.get("round_number", 0) + 1
                 new_session = game_service.start_new_game(
@@ -1638,10 +1654,10 @@ Você foi pareado com outro <b>humano real</b>! Seu objetivo secreto é enganá-
 </div>
 """)
 
-    # Header da partida (Turnos + Rodada + Botão de Handoff)
+    # Header da partida (Turnos + Rodada + Botão de Handoff + Botão Sair da Partida)
     current_round_display = min(3, max(1, st.session_state.get("round_number", 1)))
     progress_ratio = min(my_turn_count / MAX_TURNS_PER_GAME, 1.0)
-    col_bar, col_rnd, col_tag, col_hand = st.columns([3, 1, 1, 1])
+    col_bar, col_rnd, col_tag, col_hand, col_exit_game = st.columns([3, 1, 1, 1, 1])
     with col_bar:
         st.progress(progress_ratio)
     with col_rnd:
@@ -1650,9 +1666,19 @@ Você foi pareado com outro <b>humano real</b>! Seu objetivo secreto é enganá-
         st.markdown(f"<div class='hud-badge'>TURNO {my_turn_count}/{MAX_TURNS_PER_GAME}</div>", unsafe_allow_html=True)
     with col_hand:
         if current_session.status == STATUS_ACTIVE and not is_multiplayer:
-            if st.button("🙋 Falar com Humano", help="Solicitar atendimento com um operador humano real"):
+            if st.button("🙋 Operador", help="Solicitar atendimento com um operador humano real"):
                 HandoffService.request_human_handoff(current_session.id, user.id)
                 st.rerun()
+    with col_exit_game:
+        if st.button("🚪 Sair", key="btn_exit_active_game", help="Abandonar partida e voltar para a busca", use_container_width=True):
+            MatchmakingService.leave_queue(user.id)
+            st.session_state.active_session_id = None
+            st.session_state.is_searching_match = False
+            st.session_state.turn_start_time = None
+            st.session_state.user_abandoned_session = True
+            st.session_state.show_final_scoreboard = False
+            st.session_state.round_transition_to = None
+            st.rerun()
 
     # Alertas de Handoff Humano (Singleplayer)
     if current_session.status == STATUS_WAITING_OPERATOR:
