@@ -13,6 +13,7 @@ import streamlit as st
 import os
 import time
 import random
+import textwrap
 from datetime import datetime
 
 # Timer por turno — usa st_autorefresh para forçar rerun periódico a cada 1s.
