@@ -54,6 +54,22 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
+def render_html(html_str: str):
+    """
+    Renderiza blocos HTML com st.markdown garantindo que nenhuma tag caia
+    no parser de código do CommonMark devido a espaços de indentação.
+    """
+    clean = textwrap.dedent(html_str).strip()
+    lines = clean.split("\n")
+    fixed_lines = []
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("<") or stripped.endswith(">") or line.startswith("    "):
+            fixed_lines.append(stripped)
+        else:
+            fixed_lines.append(line)
+    st.markdown("\n".join(fixed_lines), unsafe_allow_html=True)
+
 # ==============================================================================
 # CSS CENTRALIZADO COM VARIÁVEIS :root (TEMA RETRO-ARCADE / HUMAN OR NOT)
 # ==============================================================================
@@ -757,10 +773,7 @@ for _k, _default in GLOBAL_SESSION_DEFAULTS.items():
 def render_chat_bubble(content: str, role: str, label: str = "", avatar: str = ""):
     """Renderiza balões de mensagem estilizados conforme o design de referência."""
     if role == "system":
-        st.markdown(
-            f'<div class="bubble-system">ℹ️ {content}</div>',
-            unsafe_allow_html=True,
-        )
+        render_html(f'<div class="bubble-system">ℹ️ {content}</div>')
         return
 
     if role == "user":
@@ -779,19 +792,19 @@ def render_chat_bubble(content: str, role: str, label: str = "", avatar: str = "
             <div class="bubble-box-opponent">{content}</div>
         </div>
         """
-    st.markdown(html, unsafe_allow_html=True)
+    render_html(html)
 
 
 def render_typing_indicator():
     """Indicador animado com avatar pixelado e blocos em magenta."""
-    st.markdown("""
+    render_html("""
     <div class="typing-box">
         <div class="avatar-opponent-q">?</div>
         <div class="typing-pixels">
             <span></span><span></span><span></span>
         </div>
     </div>
-    """, unsafe_allow_html=True)
+    """)
 
 
 def render_timer_hud(elapsed: float, limit: float):
@@ -805,7 +818,7 @@ def render_timer_hud(elapsed: float, limit: float):
     urgent_cls = "urgent" if urgent else ""
     seconds_display = f"00:{int(remaining):02d}"
 
-    st.markdown(f"""
+    render_html(f"""
     <div class="timer-hud">
         <span style="font-size:0.85rem; color:var(--muted); text-transform:uppercase; letter-spacing:0.06em;">Tempo do Turno</span>
         <div class="timer-progress-track">
@@ -819,7 +832,7 @@ def render_timer_hud(elapsed: float, limit: float):
         to {{ width: 0%; }}
     }}
     </style>
-    """, unsafe_allow_html=True)
+    """)
 
 
 def render_topic_roulette_animation(selected_topic: str):
@@ -903,19 +916,19 @@ def render_round_transition_animation(from_round: int, to_round: int):
 
 def render_match_found_animation():
     """Renderiza animação retro-arcade de confirmação de pareamento multijogador."""
-    st.markdown("""
-    <div style="text-align:center; padding: 45px 25px; background: var(--bg-card); border: 2px solid var(--neon-green); border-radius: 8px; margin: 30px auto; max-width: 650px; box-shadow: 0 0 35px rgba(0, 255, 85, 0.35);">
-        <div style="font-family: var(--font-pixel); font-size: 3rem; color: var(--neon-green); text-shadow: 0 0 20px var(--neon-green); margin-bottom: 12px; letter-spacing: 0.08em;">
-            ⚡ MATCH ENCONTRADO! ⚡
-        </div>
-        <div style="font-size: 1.25rem; color: #ffffff; margin-bottom: 10px;">
-            Oponente conectado com sucesso! Estabelecendo canal seguro...
-        </div>
-        <div style="font-size: 0.85rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.12em; margin-top: 18px;">
-            Sincronizando ambiente com o outro dispositivo...
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+    render_html("""
+<div style="text-align:center; padding: 45px 25px; background: var(--bg-card); border: 2px solid var(--neon-green); border-radius: 8px; margin: 30px auto; max-width: 650px; box-shadow: 0 0 35px rgba(0, 255, 85, 0.35);">
+<div style="font-family: var(--font-pixel); font-size: 3rem; color: var(--neon-green); text-shadow: 0 0 20px var(--neon-green); margin-bottom: 12px; letter-spacing: 0.08em;">
+⚡ MATCH ENCONTRADO! ⚡
+</div>
+<div style="font-size: 1.25rem; color: #ffffff; margin-bottom: 10px;">
+Oponente conectado com sucesso! Estabelecendo canal seguro...
+</div>
+<div style="font-size: 0.85rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.12em; margin-top: 18px;">
+Sincronizando ambiente com o outro dispositivo...
+</div>
+</div>
+""")
 
 
 def render_final_scoreboard(round_history: list[dict], user_name: str):
@@ -937,19 +950,19 @@ def render_final_scoreboard(round_history: list[dict], user_name: str):
         overall_subtitle = "As IAs modernas e os jogadores disfarçados superaram sua percepção neste teste."
         overall_color = "var(--danger)"
 
-    st.markdown(f"""
-    <div style="text-align:center; padding: 26px 20px; background: var(--bg-card); border: 2px solid {overall_color}; border-radius: 6px; margin-bottom: 24px; box-shadow: 0 0 30px rgba(0,255,85,0.15);">
-        <div style="font-family: var(--font-pixel); font-size: 2.6rem; color: {overall_color}; text-shadow: 0 0 16px {overall_color}; margin-bottom: 6px;">
-            {overall_title}
-        </div>
-        <div style="font-size: 1.1rem; color: var(--ink); margin-bottom: 14px;">
-            {overall_subtitle}
-        </div>
-        <div style="display:inline-block; padding: 6px 18px; background: rgba(255,255,255,0.05); border-radius: 20px; border: 1px solid var(--line); font-size: 1rem; color: var(--muted);">
-            Placar Geral: <b style="color:{overall_color}; font-size:1.25rem;">{wins_count} acertos</b> de <b>{total_rounds} rodadas</b> ({accuracy_pct:.0f}% de taxa de acerto)
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+    render_html(f"""
+<div style="text-align:center; padding: 26px 20px; background: var(--bg-card); border: 2px solid {overall_color}; border-radius: 6px; margin-bottom: 24px; box-shadow: 0 0 30px rgba(0,255,85,0.15);">
+<div style="font-family: var(--font-pixel); font-size: 2.6rem; color: {overall_color}; text-shadow: 0 0 16px {overall_color}; margin-bottom: 6px;">
+{overall_title}
+</div>
+<div style="font-size: 1.1rem; color: var(--ink); margin-bottom: 14px;">
+{overall_subtitle}
+</div>
+<div style="display:inline-block; padding: 6px 18px; background: rgba(255,255,255,0.05); border-radius: 20px; border: 1px solid var(--line); font-size: 1rem; color: var(--muted);">
+Placar Geral: <b style="color:{overall_color}; font-size:1.25rem;">{wins_count} acertos</b> de <b>{total_rounds} rodadas</b> ({accuracy_pct:.0f}% de taxa de acerto)
+</div>
+</div>
+""")
 
     st.markdown("<h3 style='font-family:var(--font-pixel); font-size:1.8rem; color:var(--neon-green); margin-bottom:12px;'>📊 DETALHAMENTO DAS 3 RODADAS</h3>", unsafe_allow_html=True)
 
@@ -975,47 +988,47 @@ def render_final_scoreboard(round_history: list[dict], user_name: str):
 
         details_extra = f"<div style='font-size:0.85rem; color:var(--muted); margin-top:6px;'>Interlocutor Real: <b>{opponent_label}</b></div>" if opponent_label else ""
 
-        st.markdown(f"""
-        <div style="background: {card_bg}; border: 1px solid {card_border}; border-left: 6px solid {card_border}; border-radius: 4px; padding: 18px 22px; margin-bottom: 16px;">
-            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom: 10px;">
-                <div>
-                    <span style="font-family:var(--font-pixel); font-size:1.6rem; color:var(--ink);">RODADA {r_num}</span>
-                    <span style="font-size:0.85rem; color:var(--muted); margin-left: 10px;">• {topic}</span>
-                </div>
-                <div>{badge_html}</div>
-            </div>
-            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 10px; padding: 12px; background: rgba(0,0,0,0.25); border-radius: 4px;">
-                <div>
-                    <div style="font-size:0.75rem; color:var(--muted); text-transform:uppercase; letter-spacing:0.08em;">Seu Palpite:</div>
-                    <div style="font-size:1.05rem; color:var(--ink); font-weight:600; margin-top:2px;">{guess_str}</div>
-                </div>
-                <div>
-                    <div style="font-size:0.75rem; color:var(--muted); text-transform:uppercase; letter-spacing:0.08em;">A Verdade:</div>
-                    <div style="font-size:1.05rem; color:{card_border}; font-weight:600; margin-top:2px;">{actual_str}</div>
-                </div>
-            </div>
-            {details_extra}
-        </div>
-        """, unsafe_allow_html=True)
+        render_html(f"""
+<div style="background: {card_bg}; border: 1px solid {card_border}; border-left: 6px solid {card_border}; border-radius: 4px; padding: 18px 22px; margin-bottom: 16px;">
+<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom: 10px;">
+<div>
+<span style="font-family:var(--font-pixel); font-size:1.6rem; color:var(--ink);">RODADA {r_num}</span>
+<span style="font-size:0.85rem; color:var(--muted); margin-left: 10px;">• {topic}</span>
+</div>
+<div>{badge_html}</div>
+</div>
+<div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 10px; padding: 12px; background: rgba(0,0,0,0.25); border-radius: 4px;">
+<div>
+<div style="font-size:0.75rem; color:var(--muted); text-transform:uppercase; letter-spacing:0.08em;">Seu Palpite:</div>
+<div style="font-size:1.05rem; color:var(--ink); font-weight:600; margin-top:2px;">{guess_str}</div>
+</div>
+<div>
+<div style="font-size:0.75rem; color:var(--muted); text-transform:uppercase; letter-spacing:0.08em;">A Verdade:</div>
+<div style="font-size:1.05rem; color:{card_border}; font-weight:600; margin-top:2px;">{actual_str}</div>
+</div>
+</div>
+{details_extra}
+</div>
+""")
 
 
 def render_matchmaking_radar(elapsed_seconds: float, timeout_seconds: int = 20, waiting_count: int = 1):
     """Renderiza radar arcade com efeito circular e contagem regressiva."""
-    st.markdown(f"""
-    <div class="radar-container">
-        <div class="radar-dish">
-            <div class="radar-sweep"></div>
-            <div class="radar-ping"></div>
-        </div>
-        <div class="radar-title">BUSCANDO INTERLOCUTOR NA REDE...</div>
-        <div class="radar-status">Varrendo conexões ativas • Jogadores na fila: <b>{waiting_count}</b></div>
-        <div class="radar-timer">⏱ {int(elapsed_seconds):02d}s / {timeout_seconds:02d}s</div>
-        <div style="font-size:0.85rem; color:var(--muted); max-width:480px; margin:0 auto;">
-            Se outro jogador for detectado, a partida iniciará com 2 humanos reais!<br>
-            Caso ninguém conecte até o tempo limite, a IA assumirá o teste automaticamente.
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+    render_html(f"""
+<div class="radar-container">
+<div class="radar-dish">
+<div class="radar-sweep"></div>
+<div class="radar-ping"></div>
+</div>
+<div class="radar-title">BUSCANDO INTERLOCUTOR NA REDE...</div>
+<div class="radar-status">Varrendo conexões ativas • Jogadores na fila: <b>{waiting_count}</b></div>
+<div class="radar-timer">⏱ {int(elapsed_seconds):02d}s / {timeout_seconds:02d}s</div>
+<div style="font-size:0.85rem; color:var(--muted); max-width:480px; margin:0 auto;">
+Se outro jogador for detectado, a partida iniciará com 2 humanos reais!<br>
+Caso ninguém conecte até o tempo limite, a IA assumirá o teste automaticamente.
+</div>
+</div>
+""")
 
 
 
@@ -1026,64 +1039,64 @@ def render_matchmaking_radar(elapsed_seconds: float, timeout_seconds: int = 20, 
 # ==============================================================================
 def render_rules_screen():
     """Renderiza a tela obrigatória com as regras oficiais do jogo antes de iniciar a partida ou busca."""
-    st.markdown("""
-    <div style="background: var(--bg-card); border: 2px solid var(--neon-green); border-radius: 8px; padding: 28px 24px; margin-bottom: 24px; box-shadow: 0 0 35px rgba(0, 255, 85, 0.18);">
-        <div style="text-align: center; margin-bottom: 20px;">
-            <div style="font-family: var(--font-pixel); font-size: 2.2rem; color: var(--neon-green); text-shadow: 0 0 16px var(--neon-green); letter-spacing: 0.05em; margin-bottom: 8px;">
-                📜 REGRAS DO TESTE DE TURING
-            </div>
-            <div style="font-size: 1.05rem; color: var(--ink);">
-                Leia com atenção antes de entrar no jogo. O cumprimento dessas diretrizes é obrigatório para garantir a integridade do experimento.
-            </div>
-        </div>
+    render_html("""
+<div style="background: var(--bg-card); border: 2px solid var(--neon-green); border-radius: 8px; padding: 28px 24px; margin-bottom: 24px; box-shadow: 0 0 35px rgba(0, 255, 85, 0.18);">
+<div style="text-align: center; margin-bottom: 20px;">
+<div style="font-family: var(--font-pixel); font-size: 2.2rem; color: var(--neon-green); text-shadow: 0 0 16px var(--neon-green); letter-spacing: 0.05em; margin-bottom: 8px;">
+📜 REGRAS DO TESTE DE TURING
+</div>
+<div style="font-size: 1.05rem; color: var(--ink);">
+Leia com atenção antes de entrar no jogo. O cumprimento dessas diretrizes é obrigatório para garantir a integridade do experimento.
+</div>
+</div>
 
-        <div style="display: grid; grid-template-columns: 1fr; gap: 16px; margin-top: 24px;">
-            <!-- Regra 1: Objetivo do Jogo -->
-            <div style="background: rgba(0, 255, 85, 0.05); border: 1px solid var(--neon-green-dim); border-left: 5px solid var(--neon-green); border-radius: 6px; padding: 16px 20px;">
-                <div style="font-family: var(--font-pixel); font-size: 1.25rem; color: var(--neon-green); margin-bottom: 6px;">
-                    🎯 1. O OBJETIVO DO JOGO: HUMANO OU IA?
-                </div>
-                <div style="font-size: 0.98rem; color: var(--ink); line-height: 1.5;">
-                    Você trocará até <b>5 mensagens</b> com um interlocutor misterioso. Seu objetivo é analisar as respostas, a velocidade de digitação, a coerência, o vocabulário e o estilo de conversa para <b>deduzir se você está conversando com outro Humano real ou com uma Inteligência Artificial</b> simulando um humano. Ao final do 5º turno, vote no seu palpite!
-                </div>
-            </div>
+<div style="display: grid; grid-template-columns: 1fr; gap: 16px; margin-top: 24px;">
+<!-- Regra 1: Objetivo do Jogo -->
+<div style="background: rgba(0, 255, 85, 0.05); border: 1px solid var(--neon-green-dim); border-left: 5px solid var(--neon-green); border-radius: 6px; padding: 16px 20px;">
+<div style="font-family: var(--font-pixel); font-size: 1.25rem; color: var(--neon-green); margin-bottom: 6px;">
+🎯 1. O OBJETIVO DO JOGO: HUMANO OU IA?
+</div>
+<div style="font-size: 0.98rem; color: var(--ink); line-height: 1.5;">
+Você trocará até <b>5 mensagens</b> com um interlocutor misterioso. Seu objetivo é analisar as respostas, a velocidade de digitação, a coerência, o vocabulário e o estilo de conversa para <b>deduzir se você está conversando com outro Humano real ou com uma Inteligência Artificial</b> simulando um humano. Ao final do 5º turno, vote no seu palpite!
+</div>
+</div>
 
-            <!-- Regra 2: Linguagem e Respeito -->
-            <div style="background: rgba(255, 71, 87, 0.06); border: 1px solid rgba(255, 71, 87, 0.3); border-left: 5px solid var(--danger); border-radius: 6px; padding: 16px 20px;">
-                <div style="font-family: var(--font-pixel); font-size: 1.25rem; color: var(--danger); margin-bottom: 6px;">
-                    🚫 2. RESPEITO E CONDUTA (SEM OFENSAS)
-                </div>
-                <div style="font-size: 0.98rem; color: var(--ink); line-height: 1.5;">
-                    É <b>terminantemente proibido o uso de xingamentos, ofensas, palavrões ou palavras indecentes</b> no chat. Todas as mensagens são monitoradas pelo sistema de auditoria. Mantenha uma conduta respeitosa e esportiva durante toda a partida.
-                </div>
-            </div>
+<!-- Regra 2: Linguagem e Respeito -->
+<div style="background: rgba(255, 71, 87, 0.06); border: 1px solid rgba(255, 71, 87, 0.3); border-left: 5px solid var(--danger); border-radius: 6px; padding: 16px 20px;">
+<div style="font-family: var(--font-pixel); font-size: 1.25rem; color: var(--danger); margin-bottom: 6px;">
+🚫 2. RESPEITO E CONDUTA (SEM OFENSAS)
+</div>
+<div style="font-size: 0.98rem; color: var(--ink); line-height: 1.5;">
+É <b>terminantemente proibido o uso de xingamentos, ofensas, palavrões ou palavras indecentes</b> no chat. Todas as mensagens são monitoradas pelo sistema de auditoria. Mantenha uma conduta respeitosa e esportiva durante toda a partida.
+</div>
+</div>
 
-            <!-- Regra 3: Foco no Tema -->
-            <div style="background: rgba(255, 190, 26, 0.06); border: 1px solid rgba(255, 190, 26, 0.3); border-left: 5px solid var(--warn); border-radius: 6px; padding: 16px 20px;">
-                <div style="font-family: var(--font-pixel); font-size: 1.25rem; color: var(--warn); margin-bottom: 6px;">
-                    🎲 3. FOCO OBRIGATÓRIO NO TEMA DA RODADA
-                </div>
-                <div style="font-size: 0.98rem; color: var(--ink); line-height: 1.5;">
-                    No início de cada rodada, a roleta sorteia um <b>tema central exclusivo</b>. É <b>proibido fugir do tema da rodada</b>! Todas as perguntas, opiniões e respostas trocadas devem obrigatoriamente se relacionar ao tema proposto para manter a validade do Teste de Turing.
-                </div>
-            </div>
+<!-- Regra 3: Foco no Tema -->
+<div style="background: rgba(255, 190, 26, 0.06); border: 1px solid rgba(255, 190, 26, 0.3); border-left: 5px solid var(--warn); border-radius: 6px; padding: 16px 20px;">
+<div style="font-family: var(--font-pixel); font-size: 1.25rem; color: var(--warn); margin-bottom: 6px;">
+🎲 3. FOCO OBRIGATÓRIO NO TEMA DA RODADA
+</div>
+<div style="font-size: 0.98rem; color: var(--ink); line-height: 1.5;">
+No início de cada rodada, a roleta sorteia um <b>tema central exclusivo</b>. É <b>proibido fugir do tema da rodada</b>! Todas as perguntas, opiniões e respostas trocadas devem obrigatoriamente se relacionar ao tema proposto para manter a validade do Teste de Turing.
+</div>
+</div>
 
-            <!-- Regra 4: Comunicação Exclusiva -->
-            <div style="background: rgba(0, 210, 255, 0.06); border: 1px solid rgba(0, 210, 255, 0.3); border-left: 5px solid #00d2ff; border-radius: 6px; padding: 16px 20px;">
-                <div style="font-family: var(--font-pixel); font-size: 1.25rem; color: #00d2ff; margin-bottom: 6px;">
-                    🤫 4. COMUNICAÇÃO EXCLUSIVA PELO JOGO
-                </div>
-                <div style="font-size: 0.98rem; color: var(--ink); line-height: 1.5;">
-                    É <b>estritamente proibido se comunicar de qualquer outro jeito com o outro jogador</b> além do chat oficial do jogo. Não fale em voz alta no mesmo ambiente físico, não faça gestos ou sinais visuais e não troque mensagens por apps externos (WhatsApp, Discord, etc.).
-                </div>
-            </div>
-        </div>
+<!-- Regra 4: Comunicação Exclusiva -->
+<div style="background: rgba(0, 210, 255, 0.06); border: 1px solid rgba(0, 210, 255, 0.3); border-left: 5px solid #00d2ff; border-radius: 6px; padding: 16px 20px;">
+<div style="font-family: var(--font-pixel); font-size: 1.25rem; color: #00d2ff; margin-bottom: 6px;">
+🤫 4. COMUNICAÇÃO EXCLUSIVA PELO JOGO
+</div>
+<div style="font-size: 0.98rem; color: var(--ink); line-height: 1.5;">
+É <b>estritamente proibido se comunicar de qualquer outro jeito com o outro jogador</b> além do chat oficial do jogo. Não fale em voz alta no mesmo ambiente físico, não faça gestos ou sinais visuais e não troque mensagens por apps externos (WhatsApp, Discord, etc.).
+</div>
+</div>
+</div>
 
-        <div style="text-align: center; margin-top: 22px; padding: 12px; background: rgba(0,255,85,0.06); border: 1px dashed var(--neon-green-dim); border-radius: 4px; font-size: 0.92rem; color: var(--muted);">
-            ⚡ A precisão do teste depende da honestidade dos jogadores. Jogue limpo e confie na sua percepção!
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+<div style="text-align: center; margin-top: 22px; padding: 12px; background: rgba(0,255,85,0.06); border: 1px dashed var(--neon-green-dim); border-radius: 4px; font-size: 0.92rem; color: var(--muted);">
+⚡ A precisão do teste depende da honestidade dos jogadores. Jogue limpo e confie na sua percepção!
+</div>
+</div>
+""")
 
     col_btn1, col_btn2, col_btn3 = st.columns([1, 2, 1])
     with col_btn2:
@@ -1123,10 +1136,10 @@ def render_auth_page():
             st.markdown("---")
             with st.expander("👤 Contas de demonstração"):
                 st.markdown("""
-                - **Administrador:** `admin` | Senha: `admin123`
-                - **Operador:** `operador` | Senha: `operador123`
-                - **Jogador:** `jogador1` | Senha: `jogador123`
-                """)
+- **Administrador:** `admin` | Senha: `admin123`
+- **Operador:** `operador` | Senha: `operador123`
+- **Jogador:** `jogador1` | Senha: `jogador123`
+""")
 
         with tab_register:
             st.write("")
@@ -1159,26 +1172,26 @@ user: User = current_user
 # Remove completamente a lateral esquerda da UI para Jogador 1, Jogador 2 e qualquer perfil 'usuario'
 if user.role == ROLE_USUARIO:
     st.markdown("""
-    <style>
-    [data-testid="stSidebar"],
-    section[data-testid="stSidebar"],
-    [data-testid="stSidebarCollapsedControl"],
-    [data-testid="collapsedControl"],
-    div[data-testid="stSidebarContent"],
-    button[kind="header"] {
-        display: none !important;
-        visibility: hidden !important;
-        width: 0px !important;
-    }
-    .main .block-container {
-        max-width: 960px !important;
-        margin: 0 auto !important;
-        padding-top: 1.5rem !important;
-        padding-left: 1.5rem !important;
-        padding-right: 1.5rem !important;
-    }
-    </style>
-    """, unsafe_allow_html=True)
+<style>
+[data-testid="stSidebar"],
+section[data-testid="stSidebar"],
+[data-testid="stSidebarCollapsedControl"],
+[data-testid="collapsedControl"],
+div[data-testid="stSidebarContent"],
+button[kind="header"] {
+display: none !important;
+visibility: hidden !important;
+width: 0px !important;
+}
+.main .block-container {
+max-width: 960px !important;
+margin: 0 auto !important;
+padding-top: 1.5rem !important;
+padding-left: 1.5rem !important;
+padding-right: 1.5rem !important;
+}
+</style>
+""", unsafe_allow_html=True)
     selected_view = "🎮 Jogar (Teste de Turing)"
 else:
     # Operador ou Administrador: Mantém o menu lateral para alternar entre as visões
@@ -1416,17 +1429,17 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
         waiting_players = MatchmakingService.get_waiting_count()
         queue_badge = f"🟢 {waiting_players} jogador(es) na fila" if waiting_players > 0 else "⚪ Fila vazia"
 
-        st.markdown(f"""
-        <div style="background: var(--bg-card); border: 1px solid var(--line); border-left: 4px solid var(--neon-green); padding: 16px 20px; border-radius: 4px; margin-bottom: 22px;">
-            <div style="display:flex; justify-content:space-between; align-items:center;">
-                <div>
-                    <h3 style="color:var(--neon-green); margin:0 0 4px 0; font-family:var(--font-pixel); font-size:1.8rem;">SALA DE MATCHMAKING TURING</h3>
-                    <div style="color:var(--muted); font-size:0.95rem;">Conecte-se com jogadores em outros computadores ou teste sua percepção contra o modelo local.</div>
-                </div>
-                <div class="hud-badge">{queue_badge}</div>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+        render_html(f"""
+<div style="background: var(--bg-card); border: 1px solid var(--line); border-left: 4px solid var(--neon-green); padding: 16px 20px; border-radius: 4px; margin-bottom: 22px;">
+<div style="display:flex; justify-content:space-between; align-items:center;">
+<div>
+<h3 style="color:var(--neon-green); margin:0 0 4px 0; font-family:var(--font-pixel); font-size:1.8rem;">SALA DE MATCHMAKING TURING</h3>
+<div style="color:var(--muted); font-size:0.95rem;">Conecte-se com jogadores em outros computadores ou teste sua percepção contra o modelo local.</div>
+</div>
+<div class="hud-badge">{queue_badge}</div>
+</div>
+</div>
+""")
 
         col_b1, col_b2 = st.columns(2)
         with col_b1:
@@ -1482,26 +1495,26 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
         st.markdown("<br>", unsafe_allow_html=True)
         col_s1, col_s2, col_s3 = st.columns(3)
         with col_s1:
-            st.markdown(f"""
-            <div class="arcade-stat-card">
-                <div class="arcade-stat-num">{stats['total_games']}</div>
-                <div class="arcade-stat-label">Partidas Jogadas</div>
-            </div>
-            """, unsafe_allow_html=True)
+            render_html(f"""
+<div class="arcade-stat-card">
+<div class="arcade-stat-num">{stats['total_games']}</div>
+<div class="arcade-stat-label">Partidas Jogadas</div>
+</div>
+""")
         with col_s2:
-            st.markdown(f"""
-            <div class="arcade-stat-card">
-                <div class="arcade-stat-num">{stats['wins']}</div>
-                <div class="arcade-stat-label">Vitórias (Acertos)</div>
-            </div>
-            """, unsafe_allow_html=True)
+            render_html(f"""
+<div class="arcade-stat-card">
+<div class="arcade-stat-num">{stats['wins']}</div>
+<div class="arcade-stat-label">Vitórias (Acertos)</div>
+</div>
+""")
         with col_s3:
-            st.markdown(f"""
-            <div class="arcade-stat-card">
-                <div class="arcade-stat-num">{stats['win_rate']:.1f}%</div>
-                <div class="arcade-stat-label">Taxa de Acerto</div>
-            </div>
-            """, unsafe_allow_html=True)
+            render_html(f"""
+<div class="arcade-stat-card">
+<div class="arcade-stat-num">{stats['win_rate']:.1f}%</div>
+<div class="arcade-stat-label">Taxa de Acerto</div>
+</div>
+""")
 
         st.write("")
         col_r_btn = st.columns([1, 2, 1])[1]
@@ -1549,38 +1562,38 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
             else:
                 header_text = "🎰 SORTEANDO TEMA DA RODADA... 🎰"
 
-            st.markdown(f"""
-            <div class="roulette-container">
-                <div class="roulette-header">{header_text}</div>
-                <div class="roulette-slot roulette-spinning">{candidate}</div>
-            </div>
-            """, unsafe_allow_html=True)
+            render_html(f"""
+<div class="roulette-container">
+<div class="roulette-header">{header_text}</div>
+<div class="roulette-slot roulette-spinning">{candidate}</div>
+</div>
+""")
             if _HAS_AUTOREFRESH:
                 st_autorefresh(interval=250, key=f"roulette_live_{current_session.id}")
             st.stop()
 
         elif intro_elapsed < TOTAL_INTRO:
             secs_left = max(0, int(TOTAL_INTRO - intro_elapsed))
-            st.markdown(f"""
-            <div style="text-align:center; padding: 28px 20px; background: var(--bg-card); border: 2px solid var(--neon-green); border-radius: 8px; margin-bottom: 14px; box-shadow: 0 0 30px rgba(0,255,85,0.2);">
-                <div style="font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 10px;">📖 TEMA DESTA RODADA</div>
-                <div style="font-family: var(--font-mono); font-size: 1.5rem; font-weight: 700; color: var(--neon-green); text-shadow: 0 0 14px var(--neon-green); margin-bottom: 20px; padding: 12px 20px; background: rgba(0,255,85,0.08); border-radius: 4px; border: 1px solid var(--neon-green-dim);">{current_session.topic}</div>
-                <div style="font-size: 0.8rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 6px;">⏳ Partida começa em</div>
-                <div style="font-family: var(--font-pixel); font-size: 3rem; color: var(--warn); text-shadow: 0 0 16px rgba(255,190,26,0.6);">{secs_left:02d}s</div>
-            </div>
-            """, unsafe_allow_html=True)
+            render_html(f"""
+<div style="text-align:center; padding: 28px 20px; background: var(--bg-card); border: 2px solid var(--neon-green); border-radius: 8px; margin-bottom: 14px; box-shadow: 0 0 30px rgba(0,255,85,0.2);">
+<div style="font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 10px;">📖 TEMA DESTA RODADA</div>
+<div style="font-family: var(--font-mono); font-size: 1.5rem; font-weight: 700; color: var(--neon-green); text-shadow: 0 0 14px var(--neon-green); margin-bottom: 20px; padding: 12px 20px; background: rgba(0,255,85,0.08); border-radius: 4px; border: 1px solid var(--neon-green-dim);">{current_session.topic}</div>
+<div style="font-size: 0.8rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 6px;">⏳ Partida começa em</div>
+<div style="font-family: var(--font-pixel); font-size: 3rem; color: var(--warn); text-shadow: 0 0 16px rgba(255,190,26,0.6);">{secs_left:02d}s</div>
+</div>
+""")
 
             if is_multiplayer and getattr(current_session, "pretend_ai_user_id", None) == user.id:
-                st.markdown("""
-                <div style="background: rgba(255, 0, 127, 0.12); border: 1px solid var(--neon-magenta); border-left: 5px solid var(--neon-magenta); padding: 12px 18px; border-radius: 4px; margin-bottom: 16px; box-shadow: 0 0 12px rgba(255, 0, 127, 0.2);">
-                    <div style="font-size: 0.78rem; color: var(--neon-magenta); text-transform: uppercase; letter-spacing: 0.12em; font-weight: 800; font-family: var(--font-pixel);">
-                        🎭 MISSÃO SECRETA: FINJA SER UMA INTELIGÊNCIA ARTIFICIAL!
-                    </div>
-                    <div style="color: #ffffff; font-size: 0.93rem; margin-top: 4px; line-height: 1.45;">
-                        Você foi pareado com outro <b>humano real</b>! Seu objetivo secreto é enganá-lo: responda de forma polida, sem gírias, com raciocínio analítico ou simulando uma IA para que ele vote que você é um robô ao final da partida.
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
+                render_html("""
+<div style="background: rgba(255, 0, 127, 0.12); border: 1px solid var(--neon-magenta); border-left: 5px solid var(--neon-magenta); padding: 12px 18px; border-radius: 4px; margin-bottom: 16px; box-shadow: 0 0 12px rgba(255, 0, 127, 0.2);">
+<div style="font-size: 0.78rem; color: var(--neon-magenta); text-transform: uppercase; letter-spacing: 0.12em; font-weight: 800; font-family: var(--font-pixel);">
+🎭 MISSÃO SECRETA: FINJA SER UMA INTELIGÊNCIA ARTIFICIAL!
+</div>
+<div style="color: #ffffff; font-size: 0.93rem; margin-top: 4px; line-height: 1.45;">
+Você foi pareado com outro <b>humano real</b>! Seu objetivo secreto é enganá-lo: responda de forma polida, sem gírias, com raciocínio analítico ou simulando uma IA para que ele vote que você é um robô ao final da partida.
+</div>
+</div>
+""")
 
             if _HAS_AUTOREFRESH:
                 st_autorefresh(interval=1000, key=f"topic_countdown_{current_session.id}")
@@ -1604,25 +1617,25 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
     # Banner de Tema Central da Rodada
     if getattr(current_session, "topic", None):
         mp_tag = " [MODO MULTIJOGADOR]" if is_multiplayer else ""
-        st.markdown(f"""
-        <div style="background: rgba(0, 255, 85, 0.07); border: 1px solid var(--neon-green-dim); border-left: 4px solid var(--neon-green); padding: 10px 16px; border-radius: 2px; margin-bottom: 14px;">
-            <div style="font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; font-weight: 700;">TEMA CENTRAL DA RODADA{mp_tag}</div>
-            <div style="font-size: 1.05rem; color: var(--neon-green); font-weight: 600; margin-top: 2px;">{current_session.topic}</div>
-        </div>
-        """, unsafe_allow_html=True)
+        render_html(f"""
+<div style="background: rgba(0, 255, 85, 0.07); border: 1px solid var(--neon-green-dim); border-left: 4px solid var(--neon-green); padding: 10px 16px; border-radius: 2px; margin-bottom: 14px;">
+<div style="font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; font-weight: 700;">TEMA CENTRAL DA RODADA{mp_tag}</div>
+<div style="font-size: 1.05rem; color: var(--neon-green); font-weight: 600; margin-top: 2px;">{current_session.topic}</div>
+</div>
+""")
 
     # Dica Secreta no Modo Multijogador (para 1 dos humanos fingir ser IA)
     if is_multiplayer and getattr(current_session, "pretend_ai_user_id", None) == user.id:
-        st.markdown("""
-        <div style="background: rgba(255, 0, 127, 0.12); border: 1px solid var(--neon-magenta); border-left: 5px solid var(--neon-magenta); padding: 12px 18px; border-radius: 4px; margin-bottom: 16px; box-shadow: 0 0 12px rgba(255, 0, 127, 0.2);">
-            <div style="font-size: 0.78rem; color: var(--neon-magenta); text-transform: uppercase; letter-spacing: 0.12em; font-weight: 800; font-family: var(--font-pixel);">
-                🎭 MISSÃO SECRETA: FINJA SER UMA INTELIGÊNCIA ARTIFICIAL!
-            </div>
-            <div style="color: #ffffff; font-size: 0.93rem; margin-top: 4px; line-height: 1.45;">
-                Você foi pareado com outro <b>humano real</b>! Seu objetivo secreto é enganá-lo: responda de forma polida, sem gírias, com raciocínio analítico ou simulando uma IA para que ele vote que você é um robô ao final da partida.
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+        render_html("""
+<div style="background: rgba(255, 0, 127, 0.12); border: 1px solid var(--neon-magenta); border-left: 5px solid var(--neon-magenta); padding: 12px 18px; border-radius: 4px; margin-bottom: 16px; box-shadow: 0 0 12px rgba(255, 0, 127, 0.2);">
+<div style="font-size: 0.78rem; color: var(--neon-magenta); text-transform: uppercase; letter-spacing: 0.12em; font-weight: 800; font-family: var(--font-pixel);">
+🎭 MISSÃO SECRETA: FINJA SER UMA INTELIGÊNCIA ARTIFICIAL!
+</div>
+<div style="color: #ffffff; font-size: 0.93rem; margin-top: 4px; line-height: 1.45;">
+Você foi pareado com outro <b>humano real</b>! Seu objetivo secreto é enganá-lo: responda de forma polida, sem gírias, com raciocínio analítico ou simulando uma IA para que ele vote que você é um robô ao final da partida.
+</div>
+</div>
+""")
 
     # Header da partida (Turnos + Rodada + Botão de Handoff)
     current_round_display = min(3, max(1, st.session_state.get("round_number", 1)))
@@ -1703,12 +1716,12 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
 
             if is_my_turn:
                 if is_starter and len(messages) == 0:
-                    st.markdown("""
-                    <div style="background: rgba(0, 255, 85, 0.08); border: 1px solid var(--neon-green); border-left: 4px solid var(--neon-green); padding: 10px 16px; border-radius: 4px; margin-bottom: 12px;">
-                        <span style="font-weight: 700; color: var(--neon-green); font-family: var(--font-pixel); font-size: 0.85rem;">👉 VOCÊ COMEÇA A RODADA!</span>
-                        <div style="color: #ffffff; font-size: 0.9rem; margin-top: 3px;">Envie a primeira mensagem sobre o tema sorteado para testar seu interlocutor.</div>
-                    </div>
-                    """, unsafe_allow_html=True)
+                    render_html("""
+<div style="background: rgba(0, 255, 85, 0.08); border: 1px solid var(--neon-green); border-left: 4px solid var(--neon-green); padding: 10px 16px; border-radius: 4px; margin-bottom: 12px;">
+<span style="font-weight: 700; color: var(--neon-green); font-family: var(--font-pixel); font-size: 0.85rem;">👉 VOCÊ COMEÇA A RODADA!</span>
+<div style="color: #ffffff; font-size: 0.9rem; margin-top: 3px;">Envie a primeira mensagem sobre o tema sorteado para testar seu interlocutor.</div>
+</div>
+""")
 
                 # ── PRIORIDADE MÁXIMA: Captura do input do jogador ────────────────
                 user_input = st.chat_input("Digite sua mensagem para o interlocutor misterioso...")
@@ -1795,23 +1808,23 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
 
             else:
                 if waiting_starter:
-                    st.markdown("""
-                    <div class="turn-wait-banner">
-                        <span>🎭</span>
-                        <span><b>Aguardando o oponente iniciar a conversa...</b> Como sua missão é agir como uma IA, aguarde a primeira mensagem dele para responder.</span>
-                    </div>
-                    """, unsafe_allow_html=True)
+                    render_html("""
+<div class="turn-wait-banner">
+<span>🎭</span>
+<span><b>Aguardando o oponente iniciar a conversa...</b> Como sua missão é agir como uma IA, aguarde a primeira mensagem dele para responder.</span>
+</div>
+""")
                     render_typing_indicator()
                     if _HAS_AUTOREFRESH:
                         st_autorefresh(interval=1500, key=f"chat_sync_start_{current_session.id}")
                 else:
                     # Oponente está digitando (esperando resposta no Multijogador)
-                    st.markdown("""
-                    <div class="turn-wait-banner">
-                        <span>⏳</span>
-                        <span><b>Aguardando interlocutor misterioso responder...</b> O turno dele está em andamento.</span>
-                    </div>
-                    """, unsafe_allow_html=True)
+                    render_html("""
+<div class="turn-wait-banner">
+<span>⏳</span>
+<span><b>Aguardando interlocutor misterioso responder...</b> O turno dele está em andamento.</span>
+</div>
+""")
                     render_typing_indicator()
                     # Autorefresh APENAS quando esperando o oponente responder
                     if _HAS_AUTOREFRESH:
@@ -1829,12 +1842,12 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
                     SessionRepository.update_status(current_session.id, STATUS_VOTING)
                     st.rerun()
                 else:
-                    st.markdown("""
-                    <div class="turn-wait-banner">
-                        <span>⏳</span>
-                        <span><b>Você concluiu suas 5 mensagens!</b> Aguardando o outro jogador enviar a mensagem final dele...</span>
-                    </div>
-                    """, unsafe_allow_html=True)
+                    render_html("""
+<div class="turn-wait-banner">
+<span>⏳</span>
+<span><b>Você concluiu suas 5 mensagens!</b> Aguardando o outro jogador enviar a mensagem final dele...</span>
+</div>
+""")
                     render_typing_indicator()
                     if _HAS_AUTOREFRESH:
                         st_autorefresh(interval=1500, key=f"chat_sync_wait_peer_{current_session.id}_{len(messages)}")
@@ -1860,21 +1873,21 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
                 # Ambos votaram — avança direto para a tela de resultado
                 st.rerun()
             else:
-                st.markdown("""
-            <div class="vote-panel" style="text-align:center;">
-                <h3>✅ SEU VOTO FOI REGISTRADO!</h3>
-                <p style="font-size:1.1rem; color:var(--ink);">Aguardando o interlocutor misterioso concluir o voto dele...</p>
-            </div>
-            """, unsafe_allow_html=True)
+                render_html("""
+<div class="vote-panel" style="text-align:center;">
+<h3>✅ SEU VOTO FOI REGISTRADO!</h3>
+<p style="font-size:1.1rem; color:var(--ink);">Aguardando o interlocutor misterioso concluir o voto dele...</p>
+</div>
+""")
                 if _HAS_AUTOREFRESH:
                     st_autorefresh(interval=1000, key="vote_sync_refresh")
         else:
-            st.markdown("""
-            <div class="vote-panel">
-                <h3>🛑 CONVERSA FINALIZADA!</h3>
-                <p style="font-size:1.05rem;">Você trocou 5 mensagens com o interlocutor misterioso. Com base no vocabulário, tempo de resposta e conteúdo, com quem você estava conversando?</p>
-            </div>
-            """, unsafe_allow_html=True)
+            render_html("""
+<div class="vote-panel">
+<h3>🛑 CONVERSA FINALIZADA!</h3>
+<p style="font-size:1.05rem;">Você trocou 5 mensagens com o interlocutor misterioso. Com base no vocabulário, tempo de resposta e conteúdo, com quem você estava conversando?</p>
+</div>
+""")
             st.write("")
 
             col_v1, col_v2 = st.columns(2)
@@ -1960,23 +1973,23 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
 
         st.write("")
         if my_is_win:
-            st.markdown(f"""
-            <div class="result-win">
-                <h2>🎉 PARABÉNS! VOCÊ ACERTOU!</h2>
-                <p style="font-size:1.18rem; margin-top:10px;">
-                    Seu voto: <b>{voted_str}</b> &nbsp;|&nbsp; A verdade: <b>{actual_str}</b>
-                </p>
-            </div>
-            """, unsafe_allow_html=True)
+            render_html(f"""
+<div class="result-win">
+<h2>🎉 PARABÉNS! VOCÊ ACERTOU!</h2>
+<p style="font-size:1.18rem; margin-top:10px;">
+Seu voto: <b>{voted_str}</b> &nbsp;|&nbsp; A verdade: <b>{actual_str}</b>
+</p>
+</div>
+""")
         else:
-            st.markdown(f"""
-            <div class="result-loss">
-                <h2>❌ VOCÊ FOI ENGANADO!</h2>
-                <p style="font-size:1.18rem; margin-top:10px;">
-                    Seu voto: <b>{voted_str}</b> &nbsp;|&nbsp; A verdade: <b>{actual_str}</b>
-                </p>
-            </div>
-            """, unsafe_allow_html=True)
+            render_html(f"""
+<div class="result-loss">
+<h2>❌ VOCÊ FOI ENGANADO!</h2>
+<p style="font-size:1.18rem; margin-top:10px;">
+Seu voto: <b>{voted_str}</b> &nbsp;|&nbsp; A verdade: <b>{actual_str}</b>
+</p>
+</div>
+""")
 
         # Revelação da identidade real e missão secreta no caso Multijogador
         if is_multiplayer and peer_user:
@@ -2007,18 +2020,18 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
                         </div>
                         """
 
-            st.markdown(f"""
-            <div style="background: rgba(0, 255, 85, 0.05); border: 1px solid var(--neon-green-dim); padding: 18px 22px; border-radius: 4px; margin-top: 18px;">
-                <div style="font-family: var(--font-pixel); font-size: 1.5rem; color: var(--neon-green); margin-bottom: 6px;">REVELAÇÃO DO OPONENTE REAL</div>
-                <div style="font-size: 1.05rem; color: var(--ink);">
-                    Você estava conversando com o jogador <b>@{peer_user.username}</b> ({peer_user.full_name})!
-                </div>
-                <div style="font-size: 0.95rem; color: var(--muted); margin-top: 6px;">
-                    E o outro jogador votou que você era: <b style="color:var(--neon-green);">{peer_guess_str}</b>!
-                </div>
-                {pretend_msg}
-            </div>
-            """, unsafe_allow_html=True)
+            render_html(f"""
+<div style="background: rgba(0, 255, 85, 0.05); border: 1px solid var(--neon-green-dim); padding: 18px 22px; border-radius: 4px; margin-top: 18px;">
+<div style="font-family: var(--font-pixel); font-size: 1.5rem; color: var(--neon-green); margin-bottom: 6px;">REVELAÇÃO DO OPONENTE REAL</div>
+<div style="font-size: 1.05rem; color: var(--ink);">
+Você estava conversando com o jogador <b>@{peer_user.username}</b> ({peer_user.full_name})!
+</div>
+<div style="font-size: 0.95rem; color: var(--muted); margin-top: 6px;">
+E o outro jogador votou que você era: <b style="color:var(--neon-green);">{peer_guess_str}</b>!
+</div>
+{pretend_msg}
+</div>
+""")
 
         st.write("")
         rounds_done = st.session_state.get("round_number", 1)
@@ -2028,20 +2041,20 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
         seconds_left = max(0, int(auto_advance_seconds - time_in_result))
 
         if rounds_done < 3:
-            st.markdown(f"""
-            <div style="text-align:center; padding: 12px; background: rgba(0,255,85,0.06); border: 1px dashed var(--neon-green); border-radius: 4px; margin-bottom: 12px;">
-                <span style="color:var(--muted); font-size:0.95rem;">Avançando para a <b>Rodada {rounds_done + 1}/3</b> automaticamente em:</span>
-                <b style="font-family:var(--font-pixel); font-size:1.8rem; color:var(--warn); margin-left: 8px;">{seconds_left:02d}s</b>
-            </div>
-            """, unsafe_allow_html=True)
+            render_html(f"""
+<div style="text-align:center; padding: 12px; background: rgba(0,255,85,0.06); border: 1px dashed var(--neon-green); border-radius: 4px; margin-bottom: 12px;">
+<span style="color:var(--muted); font-size:0.95rem;">Avançando para a <b>Rodada {rounds_done + 1}/3</b> automaticamente em:</span>
+<b style="font-family:var(--font-pixel); font-size:1.8rem; color:var(--warn); margin-left: 8px;">{seconds_left:02d}s</b>
+</div>
+""")
             btn_label = f"🎲 AVANÇAR AGORA (RODADA {rounds_done + 1}/3)"
         else:
-            st.markdown(f"""
-            <div style="text-align:center; padding: 12px; background: rgba(0,255,85,0.06); border: 1px dashed var(--neon-green); border-radius: 4px; margin-bottom: 12px;">
-                <span style="color:var(--muted); font-size:0.95rem;">Exibindo o <b>Placar Final</b> automaticamente em:</span>
-                <b style="font-family:var(--font-pixel); font-size:1.8rem; color:var(--warn); margin-left: 8px;">{seconds_left:02d}s</b>
-            </div>
-            """, unsafe_allow_html=True)
+            render_html(f"""
+<div style="text-align:center; padding: 12px; background: rgba(0,255,85,0.06); border: 1px dashed var(--neon-green); border-radius: 4px; margin-bottom: 12px;">
+<span style="color:var(--muted); font-size:0.95rem;">Exibindo o <b>Placar Final</b> automaticamente em:</span>
+<b style="font-family:var(--font-pixel); font-size:1.8rem; color:var(--warn); margin-left: 8px;">{seconds_left:02d}s</b>
+</div>
+""")
             btn_label = "🏁 VER PLACAR FINAL AGORA (3/3)"
 
         # Função auxiliar para avançar de rodada
@@ -2124,12 +2137,12 @@ elif selected_view == "🎧 Painel do Operador (Handoff)":
                     if item["status"] == STATUS_WAITING_OPERATOR
                     else "🟢 Em Atendimento"
                 )
-                st.markdown(f"""
-                <div class="card-session">
-                    <b>Jogador:</b> {item['player_full_name']} (@{item['player_username']})<br>
-                    <small>Status: {status_icon} | ID: {item['id'][:8]}...</small>
-                </div>
-                """, unsafe_allow_html=True)
+                render_html(f"""
+<div class="card-session">
+<b>Jogador:</b> {item['player_full_name']} (@{item['player_username']})<br>
+<small>Status: {status_icon} | ID: {item['id'][:8]}...</small>
+</div>
+""")
 
                 if st.button(f"Atender @{item['player_username']}", key=f"btn_open_{item['id']}"):
                     st.session_state.operator_selected_session = item["id"]
