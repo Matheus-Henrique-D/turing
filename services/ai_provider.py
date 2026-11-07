@@ -1260,7 +1260,7 @@ class LMStudioProvider(AIProviderInterface):
                 "messages": messages,
                 "temperature": 0.92,
                 "top_p": 0.92,
-                "max_tokens": 45,
+                "max_tokens": 30,
                 "repetition_penalty": 1.1,
                 "stream": False,
             }
@@ -1402,11 +1402,11 @@ class LMStudioProvider(AIProviderInterface):
                 or "como assistente" in text.lower():
             return self.mock_fallback._robot_denial(opponent_type, persona)
 
-        # Trunca se o modelo gerou coisa muito longa (mais de 35 palavras)
+        # Trunca se o modelo gerou coisa muito longa (mais de 18 palavras) para manter respostas curtas
         words = text.split()
-        if len(words) > 35:
+        if len(words) > 18:
             # Corta na última pontuação dentro do limite
-            text = " ".join(words[:30])
+            text = " ".join(words[:15])
             for punct in [".", "!", "?", ","]:
                 last_p = text.rfind(punct)
                 if last_p > len(text) // 2:
@@ -1602,7 +1602,7 @@ class GroqProvider(AIProviderInterface):
             "messages": messages,
             "temperature": 0.92,
             "top_p": 0.90,
-            "max_tokens": 75,
+            "max_tokens": 35,
             "stream": False,
         }
 

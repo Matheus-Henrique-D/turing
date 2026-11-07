@@ -1799,7 +1799,11 @@ Você foi pareado com outro <b>humano real</b>! Seu objetivo secreto é enganá-
                         except Exception:
                             reply_text = "opa, e aí? tudo certo por aqui"
 
-                        time.sleep(random.uniform(1.2, 2.0))
+                        # Simulação humanizada de digitação variando de 10s a 35s
+                        target_delay = random.uniform(10.0, 35.0)
+                        start_typing = time.time()
+                        while (time.time() - start_typing) < target_delay:
+                            time.sleep(0.5)
                         typing_placeholder.empty()
 
                         sender_tag = "simulated_human" if current_session.opponent_type == "HUMAN" else "ai"
