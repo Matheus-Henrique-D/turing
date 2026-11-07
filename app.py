@@ -1881,9 +1881,8 @@ Você foi pareado com outro <b>humano real</b>! Seu objetivo secreto é enganá-
                     st.session_state.turn_start_time = time.time()
                     st.rerun()
 
-                # Autorefresh contínuo de 1s para o relógio regredir em tempo real
-                if _HAS_AUTOREFRESH and elapsed < limit:
-                    st_autorefresh(interval=1000, key=f"timer_tick_{current_session.id}_{my_turn_count}")
+                # Se o tempo ainda não esgotou, o cronômetro regride suavemente via CSS puro
+                # sem st_autorefresh no turno do jogador, garantindo estabilidade total no input de texto
 
             else:
                 if waiting_starter:
