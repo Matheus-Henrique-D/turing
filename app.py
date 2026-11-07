@@ -742,6 +742,7 @@ GLOBAL_SESSION_DEFAULTS = {
     "round_transition_to": None,
     "round_finished_at": None,
     "mp_round_pending_id": None,
+    "rules_accepted": False,
 }
 
 for _k, _default in GLOBAL_SESSION_DEFAULTS.items():
@@ -1015,6 +1016,77 @@ def render_matchmaking_radar(elapsed_seconds: float, timeout_seconds: int = 20, 
 
 
 # ==============================================================================
+# TELA DE REGRAS DO JOGO (OBRIGATÓRIA ANTES DO INÍCIO / BUSCA)
+# ==============================================================================
+def render_rules_screen():
+    """Renderiza a tela obrigatória com as regras oficiais do jogo antes de iniciar a partida ou busca."""
+    st.markdown("""
+    <div style="background: var(--bg-card); border: 2px solid var(--neon-green); border-radius: 8px; padding: 28px 24px; margin-bottom: 24px; box-shadow: 0 0 35px rgba(0, 255, 85, 0.18);">
+        <div style="text-align: center; margin-bottom: 20px;">
+            <div style="font-family: var(--font-pixel); font-size: 2.2rem; color: var(--neon-green); text-shadow: 0 0 16px var(--neon-green); letter-spacing: 0.05em; margin-bottom: 8px;">
+                📜 REGRAS DO TESTE DE TURING
+            </div>
+            <div style="font-size: 1.05rem; color: var(--ink);">
+                Leia com atenção antes de entrar no jogo. O cumprimento dessas diretrizes é obrigatório para garantir a integridade do experimento.
+            </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr; gap: 16px; margin-top: 24px;">
+            <!-- Regra 1: Objetivo do Jogo -->
+            <div style="background: rgba(0, 255, 85, 0.05); border: 1px solid var(--neon-green-dim); border-left: 5px solid var(--neon-green); border-radius: 6px; padding: 16px 20px;">
+                <div style="font-family: var(--font-pixel); font-size: 1.25rem; color: var(--neon-green); margin-bottom: 6px;">
+                    🎯 1. O OBJETIVO DO JOGO: HUMANO OU IA?
+                </div>
+                <div style="font-size: 0.98rem; color: var(--ink); line-height: 1.5;">
+                    Você trocará até <b>5 mensagens</b> com um interlocutor misterioso. Seu objetivo é analisar as respostas, a velocidade de digitação, a coerência, o vocabulário e o estilo de conversa para <b>deduzir se você está conversando com outro Humano real ou com uma Inteligência Artificial</b> simulando um humano. Ao final do 5º turno, vote no seu palpite!
+                </div>
+            </div>
+
+            <!-- Regra 2: Linguagem e Respeito -->
+            <div style="background: rgba(255, 71, 87, 0.06); border: 1px solid rgba(255, 71, 87, 0.3); border-left: 5px solid var(--danger); border-radius: 6px; padding: 16px 20px;">
+                <div style="font-family: var(--font-pixel); font-size: 1.25rem; color: var(--danger); margin-bottom: 6px;">
+                    🚫 2. RESPEITO E CONDUTA (SEM OFENSAS)
+                </div>
+                <div style="font-size: 0.98rem; color: var(--ink); line-height: 1.5;">
+                    É <b>terminantemente proibido o uso de xingamentos, ofensas, palavrões ou palavras indecentes</b> no chat. Todas as mensagens são monitoradas pelo sistema de auditoria. Mantenha uma conduta respeitosa e esportiva durante toda a partida.
+                </div>
+            </div>
+
+            <!-- Regra 3: Foco no Tema -->
+            <div style="background: rgba(255, 190, 26, 0.06); border: 1px solid rgba(255, 190, 26, 0.3); border-left: 5px solid var(--warn); border-radius: 6px; padding: 16px 20px;">
+                <div style="font-family: var(--font-pixel); font-size: 1.25rem; color: var(--warn); margin-bottom: 6px;">
+                    🎲 3. FOCO OBRIGATÓRIO NO TEMA DA RODADA
+                </div>
+                <div style="font-size: 0.98rem; color: var(--ink); line-height: 1.5;">
+                    No início de cada rodada, a roleta sorteia um <b>tema central exclusivo</b>. É <b>proibido fugir do tema da rodada</b>! Todas as perguntas, opiniões e respostas trocadas devem obrigatoriamente se relacionar ao tema proposto para manter a validade do Teste de Turing.
+                </div>
+            </div>
+
+            <!-- Regra 4: Comunicação Exclusiva -->
+            <div style="background: rgba(0, 210, 255, 0.06); border: 1px solid rgba(0, 210, 255, 0.3); border-left: 5px solid #00d2ff; border-radius: 6px; padding: 16px 20px;">
+                <div style="font-family: var(--font-pixel); font-size: 1.25rem; color: #00d2ff; margin-bottom: 6px;">
+                    🤫 4. COMUNICAÇÃO EXCLUSIVA PELO JOGO
+                </div>
+                <div style="font-size: 0.98rem; color: var(--ink); line-height: 1.5;">
+                    É <b>estritamente proibido se comunicar de qualquer outro jeito com o outro jogador</b> além do chat oficial do jogo. Não fale em voz alta no mesmo ambiente físico, não faça gestos ou sinais visuais e não troque mensagens por apps externos (WhatsApp, Discord, etc.).
+                </div>
+            </div>
+        </div>
+
+        <div style="text-align: center; margin-top: 22px; padding: 12px; background: rgba(0,255,85,0.06); border: 1px dashed var(--neon-green-dim); border-radius: 4px; font-size: 0.92rem; color: var(--muted);">
+            ⚡ A precisão do teste depende da honestidade dos jogadores. Jogue limpo e confie na sua percepção!
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    col_btn1, col_btn2, col_btn3 = st.columns([1, 2, 1])
+    with col_btn2:
+        if st.button("✅ LI, ENTENDI E CONCORDO COM AS REGRAS", type="primary", use_container_width=True, key="btn_accept_rules"):
+            st.session_state.rules_accepted = True
+            st.rerun()
+
+
+# ==============================================================================
 # TELA DE AUTENTICAÇÃO (LOGIN / REGISTRO)
 # ==============================================================================
 def render_auth_page():
@@ -1187,11 +1259,17 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
                 st.session_state.current_user = None
                 st.session_state.active_session_id = None
                 st.session_state.turn_start_time = None
+                st.session_state.rules_accepted = False
                 st.rerun()
         st.markdown("<div style='border-bottom: 1px solid var(--line); margin-bottom: 18px;'></div>", unsafe_allow_html=True)
 
     st.markdown("<div class='main-header'>HUMAN OR NOT?</div>", unsafe_allow_html=True)
     st.markdown("<p style='color:var(--muted); margin-bottom: 20px;'>Descubra em 5 mensagens se você está conversando com um Humano real ou com uma IA.</p>", unsafe_allow_html=True)
+
+    # ── ESTADO 0: TELA DE REGRAS OBRIGATÓRIA ANTES DE INICIAR / BUSCAR PARTIDA ──
+    if not st.session_state.get("rules_accepted", False) and not st.session_state.get("active_session_id"):
+        render_rules_screen()
+        st.stop()
 
     # ── TRANSIÇÃO ANIMADA ENTRE RODADAS (ex: Rodada 1 -> 2 ou 2 -> 3) ─────────
     round_trans = st.session_state.get("round_transition_to")
@@ -1418,6 +1496,14 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
                 <div class="arcade-stat-label">Taxa de Acerto</div>
             </div>
             """, unsafe_allow_html=True)
+
+        st.write("")
+        col_r_btn = st.columns([1, 2, 1])[1]
+        with col_r_btn:
+            if st.button("📜 REVER REGRAS DO JOGO", key="lobby_view_rules", use_container_width=True):
+                st.session_state.rules_accepted = False
+                st.rerun()
+
         st.stop()
 
     # ── ESTADO 3: PARTIDA EM ANDAMENTO OU FINALIZADA ───────────────────────────
