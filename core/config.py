@@ -16,6 +16,7 @@ DATABASE_PATH = DATA_DIR / "turing_platform.db"
 
 # Regras de Negócio do Jogo
 MAX_TURNS_PER_GAME = 5
+TURN_LIMIT_SECONDS = 45
 OPPONENT_TYPES = ["HUMAN", "AI"]
 
 # Temas Oficiais por Rodada (Icebreakers de Conversa)

@@ -26,6 +26,7 @@ except ImportError:
 from core.database import init_db
 from core.config import (
     MAX_TURNS_PER_GAME,
+    TURN_LIMIT_SECONDS,
     ROLE_USUARIO,
     ROLE_OPERADOR,
     ROLE_ADMIN,
@@ -1818,20 +1819,71 @@ Você foi pareado com outro <b>humano real</b>! Seu objetivo secreto é enganá-
 
                         st.rerun()
 
-                # ── RELÓGIO: Atualização visual suave sem autorefresh destrutivo ──
+                # ── RELÓGIO E CRONÔMETRO DE TURNO ──
                 if st.session_state.get("turn_index_at_start", 0) != my_turn_count:
                     st.session_state.turn_start_time = time.time()
                     st.session_state.turn_index_at_start = my_turn_count
                     st.session_state.timer_expired_handled = False
-                    st.session_state.turn_limit_seconds = 45
+                    st.session_state.turn_limit_seconds = TURN_LIMIT_SECONDS
 
                 elapsed = time.time() - (st.session_state.get("turn_start_time") or time.time())
-                limit = st.session_state.get("turn_limit_seconds", 45)
+                limit = st.session_state.get("turn_limit_seconds", TURN_LIMIT_SECONDS)
 
                 render_timer_hud(elapsed, limit)
 
-                if elapsed >= limit:
-                    st.caption("⏱️ **Tempo sugerido expirado.** Finalize sua mensagem e pressione Enter para enviar.")
+                # Se o tempo limite expirou, pula a rodada para o oponente automaticamente
+                if elapsed >= limit and not st.session_state.get("timer_expired_handled", False):
+                    st.session_state.timer_expired_handled = True
+                    timeout_msg = "⏱️ [Tempo esgotado - Turno pulado]"
+                    if is_multiplayer:
+                        game_service.send_user_message(
+                            current_session.id,
+                            user.username,
+                            timeout_msg,
+                        )
+                    else:
+                        from models.message import MessageRepository
+                        from models.session import SessionRepository
+                        MessageRepository.create(
+                            session_id=current_session.id,
+                            sender_type="user",
+                            sender_name=user.username,
+                            content=timeout_msg,
+                        )
+                        # Oponente IA responde ao turno pulado
+                        all_msgs = MessageRepository.list_by_session(current_session.id)
+                        history_payload = [{"role": m.sender_type, "content": m.content} for m in all_msgs]
+                        try:
+                            reply_text = game_service.ai_provider.generate_response(
+                                user_message=timeout_msg,
+                                chat_history=history_payload,
+                                opponent_type=current_session.opponent_type,
+                                persona=current_session.persona,
+                                topic=current_session.topic,
+                            )
+                        except Exception:
+                            reply_text = "tempo esgotado por aí? vamos lá, ainda temos jogo!"
+
+                        sender_tag = "simulated_human" if current_session.opponent_type == "HUMAN" else "ai"
+                        MessageRepository.create(
+                            session_id=current_session.id,
+                            sender_type=sender_tag,
+                            sender_name="Interlocutor",
+                            content=reply_text,
+                        )
+                        user_turn_msgs = [
+                            m for m in MessageRepository.list_by_session(current_session.id)
+                            if (m.sender_name or "").strip().lower() == my_username_clean and m.sender_type == "user"
+                        ]
+                        if len(user_turn_msgs) >= MAX_TURNS_PER_GAME:
+                            SessionRepository.update_status(current_session.id, STATUS_VOTING)
+
+                    st.session_state.turn_start_time = time.time()
+                    st.rerun()
+
+                # Autorefresh contínuo de 1s para o relógio regredir em tempo real
+                if _HAS_AUTOREFRESH and elapsed < limit:
+                    st_autorefresh(interval=1000, key=f"timer_tick_{current_session.id}_{my_turn_count}")
 
             else:
                 if waiting_starter:
