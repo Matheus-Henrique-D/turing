@@ -809,10 +809,16 @@ def render_timer_hud(elapsed: float, limit: float):
     <div class="timer-hud">
         <span style="font-size:0.85rem; color:var(--muted); text-transform:uppercase; letter-spacing:0.06em;">Tempo do Turno</span>
         <div class="timer-progress-track">
-            <div class="timer-progress-fill {urgent_cls}" style="width:{pct:.1f}%;"></div>
+            <div class="timer-progress-fill {urgent_cls}" style="width:{pct:.1f}%; animation: timerDrain {remaining:.1f}s linear forwards;"></div>
         </div>
         <div class="timer-clock {urgent_cls}">⏱ {seconds_display}</div>
     </div>
+    <style>
+    @keyframes timerDrain {{
+        from {{ width: {pct:.1f}%; }}
+        to {{ width: 0%; }}
+    }}
+    </style>
     """, unsafe_allow_html=True)
 
 
@@ -1588,7 +1594,11 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
 
     # Histórico de mensagens
     messages = game_service.get_messages(current_session.id)
-    my_msgs = [m for m in messages if m.sender_name == user.username]
+    my_username_clean = (user.username or "").strip().lower()
+    my_msgs = [
+        m for m in messages
+        if (m.sender_name or "").strip().lower() == my_username_clean and m.sender_type == "user"
+    ]
     my_turn_count = len(my_msgs)
 
     # Banner de Tema Central da Rodada
@@ -1640,7 +1650,7 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
 
     # Renderiza mensagens com estrito anonimato
     for m in messages:
-        if m.sender_name == user.username:
+        if (m.sender_name or "").strip().lower() == my_username_clean:
             render_chat_bubble(m.content, role="user")
         elif m.sender_type == "operator":
             render_chat_bubble(f"[Operador {m.sender_name}]: {m.content}", role="opponent")
@@ -1654,18 +1664,57 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
     if current_session.status in [STATUS_ACTIVE, STATUS_OPERATOR_ACTIVE]:
         if my_turn_count < MAX_TURNS_PER_GAME:
 
-            # Lógica de alternância de turno no Multijogador
+            # Lógica de quem começa e alternância de turno
             is_my_turn = True
+            is_starter = False
+            waiting_starter = False
+
             if is_multiplayer:
-                if len(messages) > 0 and messages[-1].sender_name == user.username:
-                    is_my_turn = False
+                pretend_id = getattr(current_session, "pretend_ai_user_id", None)
+                if pretend_id is None:
+                    pretend_id = current_session.player2_id or user.id
+
+                # Quem NÃO tem a missão de fingir ser IA é quem DEVE começar a rodada
+                is_pretend_ai = (user.id == pretend_id)
+
+                if len(messages) == 0:
+                    if is_pretend_ai:
+                        # Quem finge de IA NUNCA começa a rodada — aguarda a mensagem do oponente
+                        is_my_turn = False
+                        waiting_starter = True
+                    else:
+                        # Quem NÃO finge de IA é quem começa a rodada
+                        is_my_turn = True
+                        is_starter = True
+                else:
+                    # Durante a conversa: alternância estrita entre os jogadores
+                    last_msg = messages[-1]
+                    last_sender_clean = (last_msg.sender_name or "").strip().lower()
+                    if last_sender_clean == my_username_clean:
+                        # Eu acabei de falar, aguardo a resposta do outro
+                        is_my_turn = False
+                    else:
+                        is_my_turn = True
+            else:
+                # Partida contra a IA (Singleplayer): o jogador humano SEMPRE começa a rodada!
+                # A IA só responde após o jogador escrever.
+                if len(messages) == 0:
+                    is_starter = True
 
             if is_my_turn:
+                if is_starter and len(messages) == 0:
+                    st.markdown("""
+                    <div style="background: rgba(0, 255, 85, 0.08); border: 1px solid var(--neon-green); border-left: 4px solid var(--neon-green); padding: 10px 16px; border-radius: 4px; margin-bottom: 12px;">
+                        <span style="font-weight: 700; color: var(--neon-green); font-family: var(--font-pixel); font-size: 0.85rem;">👉 VOCÊ COMEÇA A RODADA!</span>
+                        <div style="color: #ffffff; font-size: 0.9rem; margin-top: 3px;">Envie a primeira mensagem sobre o tema sorteado para testar seu interlocutor.</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+
                 # ── PRIORIDADE MÁXIMA: Captura do input do jogador ────────────────
                 user_input = st.chat_input("Digite sua mensagem para o interlocutor misterioso...")
 
                 # GATILHO IMEDIATO DE TURNO: Se houver input, processa e faz rerun limpo
-                # NENHUM autorefresh ou cálculo de timer roda neste ciclo para evitar cancelamento do envio
+                # Sem autorefresh durante o turno de digitação do jogador para eliminar risco de perda de texto/Enter
                 if user_input and user_input.strip():
                     clean_input = user_input.strip()
                     st.session_state.turn_start_time = time.time()
@@ -1709,7 +1758,7 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
                         except Exception:
                             reply_text = "opa, e aí? tudo certo por aqui"
 
-                        time.sleep(random.uniform(4.0, 7.0))
+                        time.sleep(random.uniform(1.2, 2.0))
                         typing_placeholder.empty()
 
                         sender_tag = "simulated_human" if current_session.opponent_type == "HUMAN" else "ai"
@@ -1720,13 +1769,16 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
                             content=reply_text,
                         )
 
-                        user_turn_msgs = [m for m in MessageRepository.list_by_session(current_session.id) if m.sender_name == user.username]
+                        user_turn_msgs = [
+                            m for m in MessageRepository.list_by_session(current_session.id)
+                            if (m.sender_name or "").strip().lower() == my_username_clean and m.sender_type == "user"
+                        ]
                         if len(user_turn_msgs) >= MAX_TURNS_PER_GAME:
                             SessionRepository.update_status(current_session.id, STATUS_VOTING)
 
                         st.rerun()
 
-                # ── RELÓGIO & AUTOREFRESH: Só executam quando o usuário não enviou mensagem ──
+                # ── RELÓGIO: Atualização visual suave sem autorefresh destrutivo ──
                 if st.session_state.get("turn_index_at_start", 0) != my_turn_count:
                     st.session_state.turn_start_time = time.time()
                     st.session_state.turn_index_at_start = my_turn_count
@@ -1741,28 +1793,38 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
                 if elapsed >= limit:
                     st.caption("⏱️ **Tempo sugerido expirado.** Finalize sua mensagem e pressione Enter para enviar.")
 
-                # Autorefresh exclusivo para atualização do relógio quando ocioso
-                if _HAS_AUTOREFRESH:
-                    st_autorefresh(interval=1000, key=f"timer_live_{current_session.id}_{my_turn_count}")
-
             else:
-                # Oponente está digitando (esperando resposta no Multijogador)
-                st.markdown("""
-                <div class="turn-wait-banner">
-                    <span>⏳</span>
-                    <span><b>Aguardando interlocutor misterioso responder...</b> O turno dele está em andamento.</span>
-                </div>
-                """, unsafe_allow_html=True)
-                render_typing_indicator()
-                # Autorefresh APENAS quando esperando o oponente responder
-                if _HAS_AUTOREFRESH:
-                    st_autorefresh(interval=2000, key=f"chat_sync_{current_session.id}_{len(messages)}")
+                if waiting_starter:
+                    st.markdown("""
+                    <div class="turn-wait-banner">
+                        <span>🎭</span>
+                        <span><b>Aguardando o oponente iniciar a conversa...</b> Como sua missão é agir como uma IA, aguarde a primeira mensagem dele para responder.</span>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    render_typing_indicator()
+                    if _HAS_AUTOREFRESH:
+                        st_autorefresh(interval=1500, key=f"chat_sync_start_{current_session.id}")
+                else:
+                    # Oponente está digitando (esperando resposta no Multijogador)
+                    st.markdown("""
+                    <div class="turn-wait-banner">
+                        <span>⏳</span>
+                        <span><b>Aguardando interlocutor misterioso responder...</b> O turno dele está em andamento.</span>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    render_typing_indicator()
+                    # Autorefresh APENAS quando esperando o oponente responder
+                    if _HAS_AUTOREFRESH:
+                        st_autorefresh(interval=1500, key=f"chat_sync_{current_session.id}_{len(messages)}")
 
         else:
             if is_multiplayer:
                 # No multijogador, o jogador atual completou suas 5 mensagens.
                 # Só avança a sessão para votação se o oponente também tiver completado as dele.
-                peer_msgs = [m for m in messages if m.sender_name != user.username and m.sender_type == "user"]
+                peer_msgs = [
+                    m for m in messages
+                    if (m.sender_name or "").strip().lower() != my_username_clean and m.sender_type == "user"
+                ]
                 if len(peer_msgs) >= MAX_TURNS_PER_GAME:
                     SessionRepository.update_status(current_session.id, STATUS_VOTING)
                     st.rerun()
@@ -1775,7 +1837,7 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
                     """, unsafe_allow_html=True)
                     render_typing_indicator()
                     if _HAS_AUTOREFRESH:
-                        st_autorefresh(interval=2000, key="chat_sync_wait_peer_turns")
+                        st_autorefresh(interval=1500, key=f"chat_sync_wait_peer_{current_session.id}_{len(messages)}")
             else:
                 # 5 turnos finalizados (singleplayer) -> avança para a votação
                 SessionRepository.update_status(current_session.id, STATUS_VOTING)

@@ -16,6 +16,7 @@ from core.config import (
 )
 from models.session import GameSession, SessionRepository
 from models.message import Message, MessageRepository
+from models.user import UserRepository
 from services.ai_provider import get_ai_provider
 
 # Personas de IA com comportamento mais robótico, analítico ou formal
@@ -103,7 +104,10 @@ class GameService:
         p_ids = [previous_session.user_id]
         if previous_session.player2_id:
             p_ids.append(previous_session.player2_id)
-        pretend_id = random.choice(p_ids)
+        if getattr(previous_session, "pretend_ai_user_id", None) in p_ids and len(p_ids) == 2:
+            pretend_id = [p for p in p_ids if p != previous_session.pretend_ai_user_id][0]
+        else:
+            pretend_id = random.choice(p_ids)
 
         # Verificação + criação + vínculo numa única transação com lock de escrita.
         # Antes, os dois aparelhos podiam criar uma sessão cada (corrida), e cada
@@ -223,7 +227,13 @@ class GameService:
                 topics = [t for t in ROUND_TOPICS if t not in (exclude_topics or [])] or ROUND_TOPICS
                 next_id = str(uuid.uuid4())
                 topic = random.choice(topics)
-                pretend_id = random.choice([old["user_id"], old["player2_id"]])
+                old_pretend = old["pretend_ai_user_id"] if "pretend_ai_user_id" in old.keys() else None
+                if old_pretend == old["user_id"]:
+                    pretend_id = old["player2_id"]
+                elif old_pretend == old["player2_id"]:
+                    pretend_id = old["user_id"]
+                else:
+                    pretend_id = random.choice([old["user_id"], old["player2_id"]])
                 conn.execute("""INSERT INTO game_sessions
                     (id, user_id, opponent_type, persona, topic, status, created_at,
                      player2_id, is_multiplayer, pretend_ai_user_id, round_ready_ack, round_migrated_ack)
@@ -249,37 +259,70 @@ class GameService:
         if not session:
             return None, "Sessão não encontrada."
 
-        if session.status not in [STATUS_ACTIVE, STATUS_OPERATOR_ACTIVE]:
-            return None, f"O jogo não está em fase de chat (status: {session.status})."
+        clean_user = (username or "").strip()
+        user_clean_lower = clean_user.lower()
 
-        # 1. Registra mensagem do usuário
+        existing_msgs = MessageRepository.list_by_session(session_id)
+        existing_user_msgs = [
+            m for m in existing_msgs
+            if (m.sender_name or "").strip().lower() == user_clean_lower and m.sender_type == "user"
+        ]
+
+        if session.status not in [STATUS_ACTIVE, STATUS_OPERATOR_ACTIVE]:
+            # Fallback seguro: se a sessão acabou de ir para voting mas o jogador ainda não concluiu suas 5 mensagens,
+            # permite registrar a mensagem final para não perder o texto enviado
+            if session.is_multiplayer and len(existing_user_msgs) < MAX_TURNS_PER_GAME and session.status == STATUS_VOTING:
+                pass
+            else:
+                return None, f"O jogo não está em fase de chat (status: {session.status})."
+
+        # Trava de turno no Multijogador
+        if session.is_multiplayer:
+            # 1. Regra de início de rodada: apenas quem NÃO finge ser IA começa a falar
+            if len(existing_msgs) == 0:
+                pretend_id = getattr(session, "pretend_ai_user_id", None)
+                if pretend_id is not None:
+                    user_obj = UserRepository.get_by_username(clean_user)
+                    if user_obj and user_obj.id == pretend_id:
+                        return None, "O jogador que não tem a missão de fingir ser IA deve iniciar a rodada."
+
+            # 2. Regra de alternância: impede envio consecutivo pelo mesmo jogador
+            elif len(existing_msgs) > 0:
+                last_msg = existing_msgs[-1]
+                if (last_msg.sender_name or "").strip().lower() == user_clean_lower:
+                    return None, "Aguarde a resposta do outro jogador."
+
+        # Registra a mensagem do usuário
         MessageRepository.create(
             session_id=session_id,
             sender_type="user",
-            sender_name=username,
+            sender_name=clean_user,
             content=content
         )
 
         all_msgs = MessageRepository.list_by_session(session_id)
-        user_msgs = [m for m in all_msgs if m.sender_name == username]
+        user_msgs = [
+            m for m in all_msgs
+            if (m.sender_name or "").strip().lower() == user_clean_lower and m.sender_type == "user"
+        ]
         user_turn_count = len(user_msgs)
 
         # Se for partida MULTIJOGADOR REAL (Humano vs Humano em computadores diferentes)
         if session.is_multiplayer:
-            # Em multijogador, não há geração de IA. A resposta virá do outro jogador.
-            # Verifica se o limite de turnos foi atingido
-            # (quando o jogador ou o total de trocas atingir o limite estipulado)
-            if len(all_msgs) >= (MAX_TURNS_PER_GAME * 2):
+            user_type_msgs = [m for m in all_msgs if m.sender_type == "user"]
+            u1_msgs = [m for m in user_type_msgs if (m.sender_name or "").strip().lower() == user_clean_lower]
+            u2_msgs = [m for m in user_type_msgs if (m.sender_name or "").strip().lower() != user_clean_lower]
+            # Ambos os jogadores devem ter completado estritamente 5 mensagens cada
+            if len(u1_msgs) >= MAX_TURNS_PER_GAME and len(u2_msgs) >= MAX_TURNS_PER_GAME:
                 SessionRepository.update_status(session_id, STATUS_VOTING)
                 return None, STATUS_VOTING
             return None, STATUS_ACTIVE
 
         # Se um operador humano assumiu a sessão (Handoff)
         if session.status == STATUS_OPERATOR_ACTIVE:
-            # Não gera resposta automática; o operador responderá pelo painel
             return None, STATUS_OPERATOR_ACTIVE
 
-        # 2. Resposta do interlocutor misterioso IA (com tema da rodada e persona)
+        # 2. Resposta do interlocutor misterioso IA (Singleplayer: IA só responde APÓS o jogador enviar)
         history_payload = [{"role": m.sender_type, "content": m.content} for m in all_msgs]
         
         reply_text = self.ai_provider.generate_response(
