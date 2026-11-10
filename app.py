@@ -1468,7 +1468,7 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
         col_b1, col_b2 = st.columns(2)
         with col_b1:
             if st.session_state.get("round_number", 0) >= 2:
-                btn_mp_label = "🤖 JOGAR RODADA 3 (FINAL CONTRA IA)"
+                btn_mp_label = "🎮 CONTINUAR PARA A RODADA 3"
             else:
                 btn_mp_label = (
                     f"🎮 JOGAR CONTRA OUTRO JOGADOR ({waiting_players} NA FILA!)"
@@ -2152,24 +2152,13 @@ E o outro jogador votou que você era: <b style="color:var(--neon-green);">{peer
         seconds_left = max(0, int(auto_advance_seconds - time_in_result))
 
         if rounds_done < 3:
-            if rounds_done == 2 and is_multiplayer:
-                render_html(f"""
-<div style="text-align:center; padding: 14px 18px; background: rgba(0,255,85,0.08); border: 2px solid var(--neon-green); border-radius: 6px; margin-bottom: 14px; box-shadow: 0 0 20px rgba(0,255,85,0.15);">
-<div style="color:var(--neon-green); font-family:var(--font-pixel); font-size:1.3rem; margin-bottom:4px; text-shadow: 0 0 10px rgba(0,255,85,0.5);">🤖 DUELO FINAL: DESAFIO CONTRA A IA!</div>
-<div style="color:var(--ink); font-size:0.95rem; margin-bottom:8px;">Na 3ª rodada, ambos os jogadores enfrentam a inteligência artificial com temas inéditos exclusivos.</div>
-<span style="color:var(--muted); font-size:0.95rem;">Iniciando a <b>Rodada 3/3</b> automaticamente em:</span>
-<b style="font-family:var(--font-pixel); font-size:1.8rem; color:var(--warn); margin-left: 8px;">{seconds_left:02d}s</b>
-</div>
-""")
-                btn_label = "🤖 ENFRENTAR IA NA RODADA FINAL (3/3)"
-            else:
-                render_html(f"""
+            render_html(f"""
 <div style="text-align:center; padding: 12px; background: rgba(0,255,85,0.06); border: 1px dashed var(--neon-green); border-radius: 4px; margin-bottom: 12px;">
 <span style="color:var(--muted); font-size:0.95rem;">Avançando para a <b>Rodada {rounds_done + 1}/3</b> automaticamente em:</span>
 <b style="font-family:var(--font-pixel); font-size:1.8rem; color:var(--warn); margin-left: 8px;">{seconds_left:02d}s</b>
 </div>
 """)
-                btn_label = f"🎲 AVANÇAR AGORA (RODADA {rounds_done + 1}/3)"
+            btn_label = f"🎲 AVANÇAR AGORA (RODADA {rounds_done + 1}/3)"
         else:
             render_html(f"""
 <div style="text-align:center; padding: 12px; background: rgba(0,255,85,0.06); border: 1px dashed var(--neon-green); border-radius: 4px; margin-bottom: 12px;">
