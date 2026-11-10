@@ -135,6 +135,119 @@ class GameService:
                     (new_id, previous_session.id))
         return SessionRepository.get_by_id(new_id)
 
+    def get_or_create_round3_ai_session(
+        self,
+        previous_session: GameSession,
+        current_user_id: int,
+        exclude_topics: Optional[list] = None
+    ) -> GameSession:
+        """
+        Garante que na 3ª rodada da partida multijogador, AMBOS os jogadores
+        enfrentem a IA em partidas solo independentes, com temas OBRIGATORIAMENTE
+        diferentes entre si e diferentes das rodadas anteriores.
+        """
+        import uuid
+        from datetime import datetime
+        from core.database import get_db_connection
+
+        p1_id = previous_session.user_id
+        p2_id = previous_session.player2_id
+
+        # Se não há player 2 por algum motivo excepcional, apenas inicia solo contra IA
+        if not p2_id:
+            return self.start_new_game(
+                current_user_id,
+                exclude_topics=exclude_topics,
+                round_number=3
+            )
+
+        with get_db_connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            conn.execute("""
+            CREATE TABLE IF NOT EXISTS round3_pairings (
+                mp_session_id TEXT PRIMARY KEY,
+                p1_id INTEGER NOT NULL,
+                p1_session_id TEXT NOT NULL,
+                p1_topic TEXT NOT NULL,
+                p2_id INTEGER NOT NULL,
+                p2_session_id TEXT NOT NULL,
+                p2_topic TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            );
+            """)
+
+            row = conn.execute(
+                "SELECT * FROM round3_pairings WHERE mp_session_id = ?",
+                (previous_session.id,)
+            ).fetchone()
+
+            if not row:
+                used_topics = set(exclude_topics or [])
+                if previous_session.topic:
+                    used_topics.add(previous_session.topic)
+
+                r1_row = conn.execute(
+                    "SELECT topic FROM game_sessions WHERE next_session_id = ?",
+                    (previous_session.id,)
+                ).fetchone()
+                if r1_row and r1_row["topic"]:
+                    used_topics.add(r1_row["topic"])
+
+                available_topics = [t for t in ROUND_TOPICS if t not in used_topics]
+                if len(available_topics) < 2:
+                    available_topics = [t for t in ROUND_TOPICS if t != previous_session.topic]
+                    if len(available_topics) < 2:
+                        available_topics = list(ROUND_TOPICS)
+
+                if len(available_topics) >= 2:
+                    topic_p1, topic_p2 = random.sample(available_topics, 2)
+                else:
+                    topic_p1 = available_topics[0]
+                    topic_p2 = [t for t in ROUND_TOPICS if t != topic_p1][0]
+
+                persona_p1 = random.choice(ADAPTIVE_HUMAN_PERSONAS)
+                persona_p2 = random.choice(ADAPTIVE_HUMAN_PERSONAS)
+
+                id_p1 = str(uuid.uuid4())
+                id_p2 = str(uuid.uuid4())
+                now = datetime.now().isoformat()
+
+                conn.execute("""
+                INSERT INTO game_sessions
+                    (id, user_id, opponent_type, persona, topic, status, created_at,
+                     player2_id, is_multiplayer, pretend_ai_user_id,
+                     round_ready_ack, round_migrated_ack)
+                VALUES (?, ?, 'AI', ?, ?, 'active', ?, NULL, 0, NULL, 0, 0)
+                """, (id_p1, p1_id, persona_p1, topic_p1, now))
+
+                conn.execute("""
+                INSERT INTO game_sessions
+                    (id, user_id, opponent_type, persona, topic, status, created_at,
+                     player2_id, is_multiplayer, pretend_ai_user_id,
+                     round_ready_ack, round_migrated_ack)
+                VALUES (?, ?, 'AI', ?, ?, 'active', ?, NULL, 0, NULL, 0, 0)
+                """, (id_p2, p2_id, persona_p2, topic_p2, now))
+
+                conn.execute("""
+                INSERT INTO round3_pairings (
+                    mp_session_id, p1_id, p1_session_id, p1_topic, p2_id, p2_session_id, p2_topic, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    previous_session.id,
+                    p1_id, id_p1, topic_p1,
+                    p2_id, id_p2, topic_p2,
+                    now
+                ))
+
+                p1_session_id = id_p1
+                p2_session_id = id_p2
+            else:
+                p1_session_id = row["p1_session_id"]
+                p2_session_id = row["p2_session_id"]
+
+        target_id = p1_session_id if current_user_id == p1_id else p2_session_id
+        return SessionRepository.get_by_id(target_id)
+
     def confirm_round_ready(self, next_session_id: str, user_id: int) -> dict:
         """
         Handshake de transição entre rodadas multiplayer.

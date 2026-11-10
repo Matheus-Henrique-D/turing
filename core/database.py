@@ -126,6 +126,20 @@ def init_db():
                 pass
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_matchmaking_status ON matchmaking_queue(status);")
         
+        # Tabela de Pareamentos da Rodada 3 (Duelo Final Solo contra IA com Temas Exclusivos)
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS round3_pairings (
+            mp_session_id TEXT PRIMARY KEY,
+            p1_id INTEGER NOT NULL,
+            p1_session_id TEXT NOT NULL,
+            p1_topic TEXT NOT NULL,
+            p2_id INTEGER NOT NULL,
+            p2_session_id TEXT NOT NULL,
+            p2_topic TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
+        """)
+        
         # Tabela de Mensagens
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS messages (

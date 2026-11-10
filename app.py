@@ -1328,6 +1328,9 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
                 st.rerun()
         with col_end2:
             if st.button("🚪 VOLTAR AO LOBBY", use_container_width=True):
+                st.session_state.round_number = 0
+                st.session_state.round_history = []
+                st.session_state.past_round_topics = []
                 st.session_state.show_final_scoreboard = False
                 st.session_state.active_session_id = None
                 st.rerun()
@@ -1457,31 +1460,57 @@ if selected_view == "🎮 Jogar (Teste de Turing)":
 </div>
 """)
 
+        if st.session_state.get("round_number", 0) >= 3:
+            st.session_state.round_number = 0
+            st.session_state.round_history = []
+            st.session_state.past_round_topics = []
+
         col_b1, col_b2 = st.columns(2)
         with col_b1:
-            btn_mp_label = (
-                f"🎮 JOGAR CONTRA OUTRO JOGADOR ({waiting_players} NA FILA!)"
-                if waiting_players > 0
-                else "🎮 JOGAR CONTRA OUTRO JOGADOR (ONLINE)"
-            )
+            if st.session_state.get("round_number", 0) >= 2:
+                btn_mp_label = "🤖 JOGAR RODADA 3 (FINAL CONTRA IA)"
+            else:
+                btn_mp_label = (
+                    f"🎮 JOGAR CONTRA OUTRO JOGADOR ({waiting_players} NA FILA!)"
+                    if waiting_players > 0
+                    else "🎮 JOGAR CONTRA OUTRO JOGADOR (ONLINE)"
+                )
             if st.button(btn_mp_label, type="primary", use_container_width=True):
                 st.session_state.user_abandoned_session = False
                 MatchmakingService.leave_queue(user.id)
-                join_res = MatchmakingService.join_queue(
-                    user.id,
-                    user.username,
-                    exclude_topics=st.session_state.get("past_round_topics", [])
-                )
-                if join_res.get("status") == "matched" and join_res.get("session_id"):
-                    st.session_state.active_session_id = join_res["session_id"]
+                if st.session_state.get("round_number", 0) >= 2:
+                    current_r = 3
+                    new_session = game_service.start_new_game(
+                        user.id,
+                        exclude_topics=st.session_state.get("past_round_topics", []),
+                        round_number=current_r
+                    )
+                    st.session_state.active_session_id = new_session.id
                     st.session_state.is_searching_match = False
-                    st.session_state.round_number = max(1, st.session_state.get("round_number", 0) + 1)
+                    st.session_state.round_number = current_r
                     st.session_state.turn_start_time = None
+                    st.session_state.turn_index_at_start = 0
+                    st.session_state.timer_expired_handled = False
+                    st.session_state.turn_limit_seconds = 45
+                    if new_session.topic:
+                        st.session_state.past_round_topics.append(new_session.topic)
+                    st.rerun()
                 else:
-                    st.session_state.is_searching_match = True
-                    st.session_state.match_search_start_time = time.time()
-                    st.session_state.active_session_id = None
-                st.rerun()
+                    join_res = MatchmakingService.join_queue(
+                        user.id,
+                        user.username,
+                        exclude_topics=st.session_state.get("past_round_topics", [])
+                    )
+                    if join_res.get("status") == "matched" and join_res.get("session_id"):
+                        st.session_state.active_session_id = join_res["session_id"]
+                        st.session_state.is_searching_match = False
+                        st.session_state.round_number = max(1, st.session_state.get("round_number", 0) + 1)
+                        st.session_state.turn_start_time = None
+                    else:
+                        st.session_state.is_searching_match = True
+                        st.session_state.match_search_start_time = time.time()
+                        st.session_state.active_session_id = None
+                    st.rerun()
 
         with col_b2:
             if st.button("🤖 JOGAR CONTRA IA (MODO SOLO)", use_container_width=True):
@@ -2123,13 +2152,24 @@ E o outro jogador votou que você era: <b style="color:var(--neon-green);">{peer
         seconds_left = max(0, int(auto_advance_seconds - time_in_result))
 
         if rounds_done < 3:
-            render_html(f"""
+            if rounds_done == 2 and is_multiplayer:
+                render_html(f"""
+<div style="text-align:center; padding: 14px 18px; background: rgba(0,255,85,0.08); border: 2px solid var(--neon-green); border-radius: 6px; margin-bottom: 14px; box-shadow: 0 0 20px rgba(0,255,85,0.15);">
+<div style="color:var(--neon-green); font-family:var(--font-pixel); font-size:1.3rem; margin-bottom:4px; text-shadow: 0 0 10px rgba(0,255,85,0.5);">🤖 DUELO FINAL: DESAFIO CONTRA A IA!</div>
+<div style="color:var(--ink); font-size:0.95rem; margin-bottom:8px;">Na 3ª rodada, ambos os jogadores enfrentam a inteligência artificial com temas inéditos exclusivos.</div>
+<span style="color:var(--muted); font-size:0.95rem;">Iniciando a <b>Rodada 3/3</b> automaticamente em:</span>
+<b style="font-family:var(--font-pixel); font-size:1.8rem; color:var(--warn); margin-left: 8px;">{seconds_left:02d}s</b>
+</div>
+""")
+                btn_label = "🤖 ENFRENTAR IA NA RODADA FINAL (3/3)"
+            else:
+                render_html(f"""
 <div style="text-align:center; padding: 12px; background: rgba(0,255,85,0.06); border: 1px dashed var(--neon-green); border-radius: 4px; margin-bottom: 12px;">
 <span style="color:var(--muted); font-size:0.95rem;">Avançando para a <b>Rodada {rounds_done + 1}/3</b> automaticamente em:</span>
 <b style="font-family:var(--font-pixel); font-size:1.8rem; color:var(--warn); margin-left: 8px;">{seconds_left:02d}s</b>
 </div>
 """)
-            btn_label = f"🎲 AVANÇAR AGORA (RODADA {rounds_done + 1}/3)"
+                btn_label = f"🎲 AVANÇAR AGORA (RODADA {rounds_done + 1}/3)"
         else:
             render_html(f"""
 <div style="text-align:center; padding: 12px; background: rgba(0,255,85,0.06); border: 1px dashed var(--neon-green); border-radius: 4px; margin-bottom: 12px;">
@@ -2150,14 +2190,29 @@ E o outro jogador votou que você era: <b style="color:var(--neon-green);">{peer
             if rounds_done < 3:
                 st.session_state.round_transition_to = (rounds_done, rounds_done + 1)
                 if is_multiplayer:
-                    # Conecta automaticamente à próxima rodada compartilhada da mesma sala
-                    next_round_sess = game_service.get_or_create_next_multiplayer_round(
-                        current_session,
-                        exclude_topics=st.session_state.get("past_round_topics", [])
-                    )
-                    st.session_state.active_session_id = next_round_sess.id
-                    st.session_state.round_number = rounds_done + 1
-                    st.session_state.mp_round_pending_id = None
+                    if rounds_done == 1:
+                        # Conecta automaticamente à próxima rodada compartilhada da mesma sala (Rodada 2 PvP inalterada)
+                        next_round_sess = game_service.get_or_create_next_multiplayer_round(
+                            current_session,
+                            exclude_topics=st.session_state.get("past_round_topics", [])
+                        )
+                        st.session_state.active_session_id = next_round_sess.id
+                        st.session_state.round_number = rounds_done + 1
+                        st.session_state.mp_round_pending_id = None
+                        if next_round_sess.topic and next_round_sess.topic not in st.session_state.past_round_topics:
+                            st.session_state.past_round_topics.append(next_round_sess.topic)
+                    else:
+                        # RODADA 3 MULTIPLAYER: OBRIGATORIAMENTE CONTRA IA COM TEMAS DIFERENTES!
+                        next_round_sess = game_service.get_or_create_round3_ai_session(
+                            current_session,
+                            user.id,
+                            exclude_topics=st.session_state.get("past_round_topics", [])
+                        )
+                        st.session_state.active_session_id = next_round_sess.id
+                        st.session_state.round_number = 3
+                        st.session_state.mp_round_pending_id = None
+                        if next_round_sess.topic and next_round_sess.topic not in st.session_state.past_round_topics:
+                            st.session_state.past_round_topics.append(next_round_sess.topic)
                 else:
                     if rounds_done == 1:
                         MatchmakingService.leave_queue(user.id)
@@ -2176,6 +2231,8 @@ E o outro jogador votou que você era: <b style="color:var(--neon-green);">{peer
                         )
                         st.session_state.active_session_id = next_round_sess.id
                         st.session_state.round_number = rounds_done + 1
+                        if next_round_sess.topic and next_round_sess.topic not in st.session_state.past_round_topics:
+                            st.session_state.past_round_topics.append(next_round_sess.topic)
             else:
                 st.session_state.show_final_scoreboard = True
                 st.session_state.active_session_id = None
